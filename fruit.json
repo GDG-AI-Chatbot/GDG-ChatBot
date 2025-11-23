@@ -1,0 +1,202 @@
+{
+   "openapi":"3.1.0",
+   "info":{
+      "title":"水果 API",
+      "description":"一個用來回傳水果資料的 API",
+      "version":"1.0.0"
+   },
+   "servers":[
+      {
+         "url":"http://localhost:8000",
+         "description":"本地伺服器"
+      }
+   ],
+   "paths":{
+      "/":{
+         "get":{
+            "summary":"Get Welcome Message",
+            "description":"回傳歡迎訊息。\nReturns:\n        Dict[str, str]: 包含歡迎訊息的字典。",
+            "operationId":"get_welcome_message",
+            "responses":{
+               "200":{
+                  "description":"Successful Response",
+                  "content":{
+                     "application/json":{
+                        "schema":{
+                           "additionalProperties":{
+                              "type":"string"
+                           },
+                           "type":"object",
+                           "title":"Response Get Welcome Message"
+                        }
+                     }
+                  }
+               }
+            }
+         }
+      },
+      "/fruits/{fruit_id}":{
+         "get":{
+            "summary":"Get Fruit By Id",
+            "description":"根據 ID 取得特定水果的資訊。\nArgs:\n        fruit_id (int): 水果的 ID。\nReturns:\n        Fruit: 對應 ID 的水果資訊。\nRaises:\n        HTTPException: 如果找不到對應 ID 的水果，則拋出 404 錯誤。",
+            "operationId":"get_fruit_by_id",
+            "parameters":[
+               {
+                  "name":"fruit_id",
+                  "in":"path",
+                  "required":true,
+                  "schema":{
+                     "type":"integer",
+                     "title":"Fruit Id"
+                  }
+               }
+            ],
+            "responses":{
+               "200":{
+                  "description":"Successful Response",
+                  "content":{
+                     "application/json":{
+                        "schema":{
+                           "$ref":"#/components/schemas/Fruit"
+                        }
+                     }
+                  }
+               },
+               "422":{
+                  "description":"Validation Error",
+                  "content":{
+                     "application/json":{
+                        "schema":{
+                           "$ref":"#/components/schemas/HTTPValidationError"
+                        }
+                     }
+                  }
+               }
+            }
+         }
+      },
+      "/fruits/":{
+         "get":{
+            "summary":"Get Fruits",
+            "description":"取得水果列表\nArgs:\n        skip (int, optional): 要跳過的水果數量。默認為 0。\n        limit (int, optional): 要返回的最大水果數量。默認為 10。\nReturns:\n        List[Fruit]: 符合條件的水果列表。",
+            "operationId":"get_fruits",
+            "parameters":[
+               {
+                  "name":"skip",
+                  "in":"query",
+                  "required":false,
+                  "schema":{
+                     "type":"integer",
+                     "default":0,
+                     "title":"Skip"
+                  }
+               },
+               {
+                  "name":"limit",
+                  "in":"query",
+                  "required":false,
+                  "schema":{
+                     "type":"integer",
+                     "default":10,
+                     "title":"Limit"
+                  }
+               }
+            ],
+            "responses":{
+               "200":{
+                  "description":"Successful Response",
+                  "content":{
+                     "application/json":{
+                        "schema":{
+                           "type":"array",
+                           "items":{
+                              "$ref":"#/components/schemas/Fruit"
+                           },
+                           "title":"Response Get Fruits"
+                        }
+                     }
+                  }
+               },
+               "422":{
+                  "description":"Validation Error",
+                  "content":{
+                     "application/json":{
+                        "schema":{
+                           "$ref":"#/components/schemas/HTTPValidationError"
+                        }
+                     }
+                  }
+               }
+            }
+         }
+      }
+   },
+   "components":{
+      "schemas":{
+         "Fruit":{
+            "properties":{
+               "name":{
+                  "type":"string",
+                  "title":"Name"
+               },
+               "price":{
+                  "type":"number",
+                  "title":"Price"
+               }
+            },
+            "type":"object",
+            "required":[
+               "name",
+               "price"
+            ],
+            "title":"Fruit"
+         },
+         "HTTPValidationError":{
+            "properties":{
+               "detail":{
+                  "items":{
+                     "$ref":"#/components/schemas/ValidationError"
+                  },
+                  "type":"array",
+                  "title":"Detail"
+               }
+            },
+            "type":"object",
+            "title":"HTTPValidationError"
+         },
+         "ValidationError":{
+            "properties":{
+               "loc":{
+                  "items":{
+                     "anyOf":[
+                        {
+                           "type":"string"
+                        },
+                        {
+                           "type":"integer"
+                        }
+                     ]
+                  },
+                  "type":"array",
+                  "title":"Location"
+               },
+               "msg":{
+                  "type":"string",
+                  "title":"Message"
+               },
+               "type":{
+                  "type":"string",
+                  "title":"Error Type"
+               }
+            },
+            "type":"object",
+            "required":[
+               "loc",
+               "msg",
+               "type"
+            ],
+            "title":"ValidationError"
+         }
+      }
+   }
+}
