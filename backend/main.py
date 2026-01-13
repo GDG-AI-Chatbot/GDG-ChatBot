@@ -12,12 +12,20 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from providers.mock import MockProvider
-
-PROVIDER_NAME = os.getenv("PROVIDER", "mock")
+from providers.digirunner import DigiRunnerProvider
+from dotenv import load_dotenv
+load_dotenv()
 
 def get_provider():
-    # 之後你要接 digirunner 就在這裡改成選 DigiRunnerProvider
-    return MockProvider()
+    name = os.getenv("PROVIDER", "mock").lower()
+
+    if name == "mock":
+        return MockProvider()
+
+    if name == "digirunner":
+        return DigiRunnerProvider()
+
+    raise RuntimeError(f"Unknown PROVIDER: {name}")
 
 provider = get_provider()
 
@@ -44,6 +52,10 @@ app.add_middleware(
 # ====== DB 初始化 ======
 def init_db():
     conn = sqlite3.connect(DB_PATH)
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")
+
     cur = conn.cursor()
 
     cur.execute("""
@@ -98,8 +110,17 @@ def init_db():
 init_db()
 
 def db():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(
+        DB_PATH,
+        timeout=30,                 # 等待鎖最多 30 秒
+        check_same_thread=False     # 允許不同 thread 使用（FastAPI 常需要）
+    )
     conn.row_factory = sqlite3.Row
+
+    # WAL：降低寫入互卡機率（Windows/SQLite 很有用）
+    conn.execute("PRAGMA journal_mode=WAL;")
+    conn.execute("PRAGMA synchronous=NORMAL;")
+    conn.execute("PRAGMA busy_timeout=30000;")  # 30 秒
     return conn
 
 def hash_password(password: str) -> str:
@@ -133,13 +154,6 @@ def create_token(user_id: int):
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGO)
 
-def get_current_user_id(authorization: str = Depends(lambda: None)):
-    # FastAPI 依賴簡化：從 header 取 Authorization: Bearer xxx
-    # （用 lambda 避免 FastAPI 解析時出錯）
-    raise NotImplementedError
-
-from fastapi import Depends
-
 def require_user_id(token: str = Depends(oauth2_scheme)):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGO])
@@ -172,10 +186,6 @@ def health():
 @app.post("/auth/register")
 def register(data: RegisterIn):
     pw = data.password
-
-    # bcrypt 限制：最多 72 bytes（不是 72 個字）
-    if len(pw.encode("utf-8")) > 72:
-        raise HTTPException(status_code=400, detail="Password too long (max 72 bytes)")
 
     conn = db()
     cur = conn.cursor()
@@ -377,10 +387,10 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
     if not user_text:
         raise HTTPException(status_code=400, detail="Empty message")
 
+    # ===== 第一段：只做 DB 寫入（快速完成後關掉連線）=====
     conn = db()
     cur = conn.cursor()
 
-    # 確認聊天室屬於此使用者
     cur.execute(
         "SELECT id FROM conversations WHERE id=? AND user_id=?",
         (conversation_id, user_id)
@@ -391,7 +401,6 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
 
     now = datetime.utcnow().isoformat()
 
-    # 存 user 訊息
     cur.execute(
         """
         INSERT INTO messages(conversation_id, user_id, role, content, created_at)
@@ -401,11 +410,8 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
     )
     user_message_id = cur.lastrowid
 
-    # 綁定附件（message_files）
     files_for_provider = []
-
     if file_ids:
-        # 只允許使用者自己的檔案
         placeholders = ",".join(["?"] * len(file_ids))
         cur.execute(
             f"""
@@ -425,7 +431,10 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
 
         files_for_provider = owned_files
 
-    # 用 Provider 產生回覆（現在是 MockProvider）
+    conn.commit()
+    conn.close()  # 先關掉，避免鎖住 DB
+
+    # ===== 第二段：呼叫 provider（可能耗時）=====
     reply = provider.reply(
         user_text=user_text,
         conversation_id=conversation_id,
@@ -433,15 +442,16 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
         files=files_for_provider,
     )
 
-    # 存 assistant 訊息
+    # ===== 第三段：再開新連線寫入 assistant message =====
+    conn = db()
+    cur = conn.cursor()
     cur.execute(
         """
         INSERT INTO messages(conversation_id, user_id, role, content, created_at)
         VALUES(?, ?, ?, ?, ?)
         """,
-        (conversation_id, user_id, "assistant", reply, now)
+        (conversation_id, user_id, "assistant", reply, datetime.utcnow().isoformat())
     )
-
     conn.commit()
     conn.close()
 
