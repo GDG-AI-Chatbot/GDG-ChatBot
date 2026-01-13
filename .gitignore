@@ -1,0 +1,25 @@
+# python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+
+# backend local data
+backend/app.db
+backend/uploads/
+
+# node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+!.env.example
+
+# ide/os
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
