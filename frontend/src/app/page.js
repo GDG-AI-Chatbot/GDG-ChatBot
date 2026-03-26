@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import styles from "./page.module.css";
 
-const API = "http://127.0.0.1:8000";
+const API =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined"
+    ? window.location.protocol + "//" + window.location.hostname + ":8000"
+    : "http://127.0.0.1:8000");
 
 export default function Page() {
   // Auth
@@ -10,6 +15,8 @@ export default function Page() {
   const [username, setUsername] = useState("Polly");
   const [password, setPassword] = useState("123");
   const [token, setToken] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState("");
 
   // Conversations
   const [conversations, setConversations] = useState([]);
@@ -93,26 +100,58 @@ export default function Page() {
 
   // ---------- auth ----------
   async function register() {
+    const user = username.trim();
+    const pw = password.trim();
+    if (!user || !pw) {
+      setAuthError("請輸入帳號與密碼");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError("");
     try {
-      await apiJson("/auth/register", "POST", { username, password }, "");
+      await apiJson("/auth/register", "POST", { username: user, password: pw }, "");
       alert("註冊成功！請登入");
       setMode("login");
     } catch (e) {
-      alert(`註冊失敗：${e.message}`);
+      setAuthError(`註冊失敗：${e.message}`);
+    } finally {
+      setAuthLoading(false);
     }
   }
 
   async function login() {
+    const user = username.trim();
+    const pw = password.trim();
+    if (!user || !pw) {
+      setAuthError("請輸入帳號與密碼");
+      return;
+    }
+
+    setAuthLoading(true);
+    setAuthError("");
     try {
-      const data = await apiJson("/auth/login", "POST", { username, password }, "");
+      const data = await apiJson("/auth/login", "POST", { username: user, password: pw }, "");
       localStorage.setItem("token", data.access_token);
       setToken(data.access_token);
 
       // 登入後：載入聊天室列表/預設聊天室
       await ensureAtLeastOneConversation(data.access_token);
     } catch (e) {
-      alert(`登入失敗：${e.message}`);
+      setAuthError(`登入失敗：${e.message}`);
+    } finally {
+      setAuthLoading(false);
     }
+  }
+
+  function handleAuthSubmit(e) {
+    e.preventDefault();
+    if (authLoading) return;
+    if (mode === "register") {
+      register();
+      return;
+    }
+    login();
   }
 
   function logout() {
@@ -224,179 +263,284 @@ export default function Page() {
   }
 }
 
+  const activeConversation = conversations.find((c) => c.id === activeConversationId) || null;
+
   // ---------- UI ----------
   if (!token) {
     return (
-      <main style={{ maxWidth: 520, margin: "40px auto", padding: 16 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 700 }}>GDG Chatbot（前端 v2）</h1>
-        <p style={{ opacity: 0.7 }}>現在加入聊天室列表（Conversations）。</p>
+      <main className={styles.authPage}>
+        <div className={styles.authBackdrop} />
+        <section className={styles.authShell}>
+          <aside className={styles.brandPanel}>
+            <p className={styles.brandKicker}>GDG Campus NTPU presents</p>
+            <h1 className={styles.brandTitle}>GDG ChatBot</h1>
+            <p className={styles.brandDescription}>
+              A premium campus AI workspace for focused conversations, fast collaboration,
+              and thoughtful learning.
+            </p>
+          </aside>
 
-        <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-          <button onClick={() => setMode("login")}>登入</button>
-          <button onClick={() => setMode("register")}>註冊</button>
-        </div>
+          <section className={styles.formPanel}>
+            <div className={styles.modeSwitch}>
+              <button
+                type="button"
+                className={`${styles.modeButton} ${mode === "login" ? styles.modeButtonActive : ""}`}
+                onClick={() => {
+                  setMode("login");
+                  setAuthError("");
+                }}
+              >
+                登入
+              </button>
+              <button
+                type="button"
+                className={`${styles.modeButton} ${mode === "register" ? styles.modeButtonActive : ""}`}
+                onClick={() => {
+                  setMode("register");
+                  setAuthError("");
+                }}
+              >
+                註冊
+              </button>
+            </div>
 
-        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
-          <input placeholder="username" value={username} onChange={(e) => setUsername(e.target.value)} />
-          <input placeholder="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <h2 className={styles.formTitle}>
+              {mode === "register" ? "建立你的帳號" : "歡迎回來"}
+            </h2>
+            <p className={styles.formDescription}>
+              {mode === "register"
+                ? "完成註冊後即可開始建立聊天室與管理附件。"
+                : "登入後可直接進入聊天室列表與對話介面。"}
+            </p>
 
-          {mode === "register" ? (
-            <button onClick={register}>註冊</button>
-          ) : (
-            <button onClick={login}>登入</button>
-          )}
-        </div>
+            <form className={styles.formGrid} onSubmit={handleAuthSubmit}>
+              <label className={styles.inputLabel}>
+                Username
+                <input
+                  className={styles.inputField}
+                  placeholder="輸入帳號"
+                  autoComplete="username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                />
+              </label>
+
+              <label className={styles.inputLabel}>
+                Password
+                <input
+                  className={styles.inputField}
+                  placeholder="輸入密碼"
+                  type="password"
+                  autoComplete={mode === "register" ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </label>
+
+              {authError && (
+                <p className={styles.authError} role="alert" aria-live="polite">
+                  {authError}
+                </p>
+              )}
+
+              {mode === "register" ? (
+                <button className={styles.submitButton} type="submit" disabled={authLoading}>
+                  {authLoading ? "建立中..." : "建立帳號"}
+                </button>
+              ) : (
+                <button className={styles.submitButton} type="submit" disabled={authLoading}>
+                  {authLoading ? "登入中..." : "進入 GDG ChatBot"}
+                </button>
+              )}
+            </form>
+          </section>
+        </section>
       </main>
     );
   }
 
   return (
-    <main style={{ height: "90vh", display: "flex", gap: 12, padding: 16, maxWidth: 1200, margin: "0 auto" }}>
-      {/* 左側：聊天室列表 */}
-      <aside style={{ width: 280, border: "1px solid #ddd", borderRadius: 10, padding: 12, display: "flex", flexDirection: "column" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-          <b>聊天室</b>
-          <button onClick={logout}>登出</button>
-        </div>
-
-        <button onClick={createConversation}>＋ 新增聊天室</button>
-
-        <div style={{ marginTop: 10, overflowY: "auto", flex: 1 }}>
-          {conversations.map((c) => {
-            const active = c.id === activeConversationId;
-            return (
-              <div
-                key={c.id}
-                onClick={() => selectConversation(c.id)}
-                style={{
-                  padding: "10px 8px",
-                  marginBottom: 6,
-                  borderRadius: 8,
-                  cursor: "pointer",
-                  border: "1px solid #ddd",
-                  background: active ? "#f3f3f3" : "white",
-                }}
-                title={c.created_at}
-              >
-                <div style={{ fontWeight: 600 }}>{c.title}</div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>id: {c.id}</div>
-              </div>
-            );
-          })}
-        </div>
-      </aside>
-
-      {/* 右側：聊天區 */}
-      <section style={{ flex: 1, display: "flex", flexDirection: "column", gap: 12 }}>
-        {/* 上傳 */}
-        <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
-          <b>上傳檔案</b>
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 8 }}>
-            <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
-            <button onClick={uploadFile}>上傳</button>
-          </div>
-          {uploadInfo && <p style={{ marginTop: 8, opacity: 0.75 }}>{uploadInfo}</p>}
-          <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-            （下一步我們會把 file_id 綁到訊息，送去 digiRunner/Dify）
-          </p>
-        </div>
-
-        <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12 }}>
-          <b>選擇要附加到下一則訊息的檔案</b>
-          {myFiles.length === 0 ? (
-            <p style={{ opacity: 0.7, marginTop: 6 }}>目前沒有已上傳檔案</p>
-          ) : (
-            <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
-              {myFiles.map((f) => (
-                <label key={f.file_id} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={selectedFileIds.includes(f.file_id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedFileIds((prev) => [...prev, f.file_id]);
-                      } else {
-                        setSelectedFileIds((prev) => prev.filter((id) => id !== f.file_id));
-                      }
-                    }}
-                  />
-                  <span>
-                    {f.filename} <span style={{ opacity: 0.6 }}>(id: {f.file_id})</span>
-                  </span>
-                </label>
-              ))}
+    <main className={styles.chatPage}>
+      <div className={styles.authBackdrop} />
+      <section className={styles.chatShell}>
+        <aside className={styles.chatSidebar}>
+          <div className={styles.sidebarHeader}>
+            <div>
+              <p className={styles.sidebarKicker}>GDG Campus NTPU</p>
+              <h2 className={styles.sidebarTitle}>Chat Lounge</h2>
             </div>
-          )}
+            <button type="button" className={styles.sidebarGhostButton} onClick={logout}>
+              登出
+            </button>
+          </div>
 
-          {selectedFileIds.length > 0 && (
-            <p style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>
-              已選：{selectedFileIds.join(", ")}
-            </p>
-          )}
-
-          <button
-            style={{ marginTop: 10 }}
-            onClick={() => setSelectedFileIds([])}
-            disabled={selectedFileIds.length === 0}
-          >
-            清空選取
+          <button type="button" className={styles.newChatButton} onClick={createConversation}>
+            + 新增聊天室
           </button>
-        </div>
 
-        {/* 訊息顯示 */}
-        <div style={{ border: "1px solid #ddd", borderRadius: 10, padding: 12, flex: 1, overflowY: "auto" }}>
-          {!activeConversationId ? (
-            <p style={{ opacity: 0.7 }}>請先選擇或建立一個聊天室</p>
-          ) : messages.length === 0 ? (
-            <p style={{ opacity: 0.7 }}>這個聊天室目前沒有訊息，來傳第一句吧！</p>
-          ) : (
-            messages.map((m, idx) => (
-              <div key={idx} style={{ marginBottom: 12 }}>
-                <div>
-                  <b>{m.role}：</b> {m.content}
-                </div>
+          <div className={styles.conversationList}>
+            {conversations.length === 0 ? (
+              <p className={styles.sidebarEmpty}>目前沒有聊天室，先建立一個吧。</p>
+            ) : (
+              conversations.map((c) => {
+                const active = c.id === activeConversationId;
+                return (
+                  <button
+                    type="button"
+                    key={c.id}
+                    onClick={() => selectConversation(c.id)}
+                    className={`${styles.conversationCard} ${active ? styles.conversationCardActive : ""}`}
+                    title={c.created_at}
+                  >
+                    <span className={styles.conversationTitle}>{c.title}</span>
+                    <span className={styles.conversationMeta}>Conversation #{c.id}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </aside>
 
-                {m.files && m.files.length > 0 && (
-                  <div style={{ marginTop: 6, paddingLeft: 16, fontSize: 13, opacity: 0.85 }}>
-                    <div><b>附件：</b></div>
-                    <ul style={{ marginTop: 4 }}>
-                      {m.files.map((f) => (
-                        <li key={f.file_id} style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                          <span>
-                            {f.filename} <span style={{ opacity: 0.6 }}>(id: {f.file_id})</span>
-                          </span>
+        <section className={styles.chatMain}>
+          <header className={styles.chatTopBar}>
+            <div>
+              <p className={styles.chatTopKicker}>GDG Chat Workspace</p>
+              <h3 className={styles.chatTopTitle}>
+                {activeConversation ? activeConversation.title : "請先選擇聊天室"}
+              </h3>
+            </div>
+            <span className={styles.chatTopMeta}>
+              {activeConversation
+                ? `Conversation #${activeConversation.id}`
+                : "No active conversation"}
+            </span>
+          </header>
 
-                          <button
-                            onClick={() => {
-                              // 用 fetch 帶 Authorization 下載 blob，再用瀏覽器下載
-                              downloadWithToken(f.file_id, f.filename);
-                            }}
-                          >
-                            下載
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+          <div className={styles.utilityGrid}>
+            <section className={styles.utilityCard}>
+              <div className={styles.utilityHeader}>
+                <h4>檔案上傳</h4>
+                <p>上傳後可加入下一則訊息附件。</p>
               </div>
-            ))
-          )}
-        </div>
+              <div className={styles.fileUploadRow}>
+                <input
+                  className={styles.fileInput}
+                  type="file"
+                  onChange={(e) => setFile(e.target.files?.[0] || null)}
+                />
+                <button type="button" className={styles.ghostActionButton} onClick={uploadFile}>
+                  上傳
+                </button>
+              </div>
+              {uploadInfo && <p className={styles.uploadInfo}>{uploadInfo}</p>}
+            </section>
 
-        {/* 輸入送出 */}
-        <div style={{ display: "flex", gap: 8 }}>
-          <input
-            style={{ flex: 1 }}
-            placeholder="輸入訊息..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={(e) => (e.key === "Enter" ? sendMessage() : null)}
-          />
-          <button onClick={sendMessage} disabled={!activeConversationId}>
-            送出
-          </button>
-        </div>
+            <section className={styles.utilityCard}>
+              <div className={styles.utilityHeader}>
+                <h4>訊息附件</h4>
+                <p>勾選後會附加到下一則送出的訊息。</p>
+              </div>
+
+              {myFiles.length === 0 ? (
+                <p className={styles.utilityEmpty}>目前沒有已上傳檔案</p>
+              ) : (
+                <div className={styles.fileList}>
+                  {myFiles.map((f) => (
+                    <label key={f.file_id} className={styles.fileOption}>
+                      <input
+                        type="checkbox"
+                        checked={selectedFileIds.includes(f.file_id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedFileIds((prev) => [...prev, f.file_id]);
+                          } else {
+                            setSelectedFileIds((prev) => prev.filter((id) => id !== f.file_id));
+                          }
+                        }}
+                      />
+                      <span className={styles.fileOptionText}>
+                        {f.filename} <span>(id: {f.file_id})</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {selectedFileIds.length > 0 && (
+                <p className={styles.selectionHint}>已選擇：{selectedFileIds.join(", ")}</p>
+              )}
+
+              <button
+                type="button"
+                className={styles.clearButton}
+                onClick={() => setSelectedFileIds([])}
+                disabled={selectedFileIds.length === 0}
+              >
+                清空選取
+              </button>
+            </section>
+          </div>
+
+          <section className={styles.messagePanel}>
+            {!activeConversationId ? (
+              <p className={styles.messageEmpty}>請先選擇或建立一個聊天室。</p>
+            ) : messages.length === 0 ? (
+              <p className={styles.messageEmpty}>這個聊天室目前沒有訊息，來傳第一句吧。</p>
+            ) : (
+              <div className={styles.messageStack}>
+                {messages.map((m, idx) => {
+                  const isUser = m.role === "user";
+                  return (
+                    <article
+                      key={m.id || `${m.role}-${idx}`}
+                      className={`${styles.messageBubble} ${
+                        isUser ? styles.messageBubbleUser : styles.messageBubbleAssistant
+                      }`}
+                    >
+                      <p className={styles.messageRole}>{isUser ? "You" : "Assistant"}</p>
+                      <p className={styles.messageText}>{m.content}</p>
+
+                      {m.files && m.files.length > 0 && (
+                        <div className={styles.messageFiles}>
+                          {m.files.map((f) => (
+                            <div key={f.file_id} className={styles.fileChip}>
+                              <span>{f.filename}</span>
+                              <button
+                                type="button"
+                                className={styles.fileChipButton}
+                                onClick={() => downloadWithToken(f.file_id, f.filename)}
+                              >
+                                下載
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          <footer className={styles.composer}>
+            <input
+              className={styles.composerInput}
+              placeholder="輸入訊息..."
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              onKeyDown={(e) => (e.key === "Enter" ? sendMessage() : null)}
+            />
+            <button
+              type="button"
+              className={styles.composerButton}
+              onClick={sendMessage}
+              disabled={!activeConversationId}
+            >
+              送出
+            </button>
+          </footer>
+        </section>
       </section>
     </main>
   );
