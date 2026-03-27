@@ -307,6 +307,41 @@
   padding-right: 4px;
 }
 
+.conversationList,
+.messagePanel,
+.fileList {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(52, 118, 223, 0.6) rgba(229, 238, 255, 0.9);
+}
+
+.conversationList::-webkit-scrollbar,
+.messagePanel::-webkit-scrollbar,
+.fileList::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.conversationList::-webkit-scrollbar-track,
+.messagePanel::-webkit-scrollbar-track,
+.fileList::-webkit-scrollbar-track {
+  background: rgba(229, 238, 255, 0.9);
+  border-radius: 999px;
+}
+
+.conversationList::-webkit-scrollbar-thumb,
+.messagePanel::-webkit-scrollbar-thumb,
+.fileList::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  border: 2px solid rgba(229, 238, 255, 0.9);
+  background: linear-gradient(180deg, rgba(76, 144, 244, 0.86) 0%, rgba(52, 168, 83, 0.72) 100%);
+}
+
+.conversationList::-webkit-scrollbar-thumb:hover,
+.messagePanel::-webkit-scrollbar-thumb:hover,
+.fileList::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(52, 118, 223, 0.92) 0%, rgba(46, 149, 95, 0.82) 100%);
+}
+
 .conversationCard {
   width: 100%;
   min-width: 0;
