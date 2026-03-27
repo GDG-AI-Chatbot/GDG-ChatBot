@@ -300,6 +300,8 @@
   min-height: 0;
   overflow-y: auto;
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 8px;
   padding-right: 4px;
 }
@@ -531,11 +533,14 @@
 
 .messageStack {
   display: grid;
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 11px;
 }
 
 .messageBubble {
-  max-width: min(76%, 690px);
+  width: fit-content;
+  max-width: min(64%, 690px);
   border-radius: 16px;
   padding: 11px 13px;
   display: grid;
