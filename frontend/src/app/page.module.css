@@ -214,7 +214,8 @@
   position: relative;
   min-height: 100vh;
   padding: 24px;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   background:
     radial-gradient(1100px 620px at 10% 12%, rgba(66, 133, 244, 0.2), transparent 64%),
     radial-gradient(1000px 640px at 92% 90%, rgba(52, 168, 83, 0.18), transparent 60%),
@@ -225,7 +226,8 @@
   position: relative;
   z-index: 1;
   width: min(1380px, 100%);
-  height: calc(100vh - 48px);
+  min-height: calc(100vh - 48px);
+  height: auto;
   margin: 0 auto;
   display: grid;
   grid-template-columns: 310px minmax(0, 1fr);
@@ -303,6 +305,8 @@
 }
 
 .conversationCard {
+  width: 100%;
+  min-width: 0;
   text-align: left;
   border: 1px solid rgba(255, 255, 255, 0.34);
   border-radius: 13px;
@@ -320,14 +324,20 @@
 }
 
 .conversationTitle {
+  display: block;
+  min-width: 0;
   font-size: 0.96rem;
   font-weight: 700;
   line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .conversationMeta {
+  display: block;
   font-size: 0.78rem;
   color: rgba(255, 255, 255, 0.82);
+  overflow-wrap: anywhere;
 }
 
 .sidebarEmpty {
@@ -371,6 +381,8 @@
   font-size: 1.3rem;
   line-height: 1.2;
   color: #10254b;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .chatTopMeta {
@@ -636,7 +648,8 @@
   }
 
   .chatShell {
-    height: calc(100vh - 36px);
+    min-height: calc(100vh - 36px);
+    height: auto;
     grid-template-columns: 280px minmax(0, 1fr);
   }
 
