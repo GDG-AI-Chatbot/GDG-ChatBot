@@ -10,6 +10,8 @@ const API =
     : "http://127.0.0.1:8000");
 
 export default function Page() {
+  const ENABLE_FILE_UI = false;
+
   // Auth
   const [mode, setMode] = useState("login"); // login | register
   const [username, setUsername] = useState("Polly");
@@ -203,7 +205,7 @@ export default function Page() {
       await apiJson("/chat", "POST", {
         conversation_id: activeConversationId,
         message: text,
-        file_ids: selectedFileIds,
+        file_ids: ENABLE_FILE_UI ? selectedFileIds : [],
       });
       setSelectedFileIds([]);
       setMessage("");
@@ -401,7 +403,7 @@ export default function Page() {
           </div>
         </aside>
 
-        <section className={styles.chatMain}>
+        <section className={`${styles.chatMain} ${!ENABLE_FILE_UI ? styles.chatMainCompact : ""}`}>
           <header className={styles.chatTopBar}>
             <div>
               <p className={styles.chatTopKicker}>GDG Chat Workspace</p>
@@ -416,70 +418,72 @@ export default function Page() {
             </span>
           </header>
 
-          <div className={styles.utilityGrid}>
-            <section className={styles.utilityCard}>
-              <div className={styles.utilityHeader}>
-                <h4>檔案上傳</h4>
-                <p>上傳後可加入下一則訊息附件。</p>
-              </div>
-              <div className={styles.fileUploadRow}>
-                <input
-                  className={styles.fileInput}
-                  type="file"
-                  onChange={(e) => setFile(e.target.files?.[0] || null)}
-                />
-                <button type="button" className={styles.ghostActionButton} onClick={uploadFile}>
-                  上傳
-                </button>
-              </div>
-              {uploadInfo && <p className={styles.uploadInfo}>{uploadInfo}</p>}
-            </section>
-
-            <section className={styles.utilityCard}>
-              <div className={styles.utilityHeader}>
-                <h4>訊息附件</h4>
-                <p>勾選後會附加到下一則送出的訊息。</p>
-              </div>
-
-              {myFiles.length === 0 ? (
-                <p className={styles.utilityEmpty}>目前沒有已上傳檔案</p>
-              ) : (
-                <div className={styles.fileList}>
-                  {myFiles.map((f) => (
-                    <label key={f.file_id} className={styles.fileOption}>
-                      <input
-                        type="checkbox"
-                        checked={selectedFileIds.includes(f.file_id)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedFileIds((prev) => [...prev, f.file_id]);
-                          } else {
-                            setSelectedFileIds((prev) => prev.filter((id) => id !== f.file_id));
-                          }
-                        }}
-                      />
-                      <span className={styles.fileOptionText}>
-                        {f.filename} <span>(id: {f.file_id})</span>
-                      </span>
-                    </label>
-                  ))}
+          {ENABLE_FILE_UI && (
+            <div className={styles.utilityGrid}>
+              <section className={styles.utilityCard}>
+                <div className={styles.utilityHeader}>
+                  <h4>檔案上傳</h4>
+                  <p>上傳後可加入下一則訊息附件。</p>
                 </div>
-              )}
+                <div className={styles.fileUploadRow}>
+                  <input
+                    className={styles.fileInput}
+                    type="file"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                  <button type="button" className={styles.ghostActionButton} onClick={uploadFile}>
+                    上傳
+                  </button>
+                </div>
+                {uploadInfo && <p className={styles.uploadInfo}>{uploadInfo}</p>}
+              </section>
 
-              {selectedFileIds.length > 0 && (
-                <p className={styles.selectionHint}>已選擇：{selectedFileIds.join(", ")}</p>
-              )}
+              <section className={styles.utilityCard}>
+                <div className={styles.utilityHeader}>
+                  <h4>訊息附件</h4>
+                  <p>勾選後會附加到下一則送出的訊息。</p>
+                </div>
 
-              <button
-                type="button"
-                className={styles.clearButton}
-                onClick={() => setSelectedFileIds([])}
-                disabled={selectedFileIds.length === 0}
-              >
-                清空選取
-              </button>
-            </section>
-          </div>
+                {myFiles.length === 0 ? (
+                  <p className={styles.utilityEmpty}>目前沒有已上傳檔案</p>
+                ) : (
+                  <div className={styles.fileList}>
+                    {myFiles.map((f) => (
+                      <label key={f.file_id} className={styles.fileOption}>
+                        <input
+                          type="checkbox"
+                          checked={selectedFileIds.includes(f.file_id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedFileIds((prev) => [...prev, f.file_id]);
+                            } else {
+                              setSelectedFileIds((prev) => prev.filter((id) => id !== f.file_id));
+                            }
+                          }}
+                        />
+                        <span className={styles.fileOptionText}>
+                          {f.filename} <span>(id: {f.file_id})</span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {selectedFileIds.length > 0 && (
+                  <p className={styles.selectionHint}>已選擇：{selectedFileIds.join(", ")}</p>
+                )}
+
+                <button
+                  type="button"
+                  className={styles.clearButton}
+                  onClick={() => setSelectedFileIds([])}
+                  disabled={selectedFileIds.length === 0}
+                >
+                  清空選取
+                </button>
+              </section>
+            </div>
+          )}
 
           <section className={styles.messagePanel}>
             {!activeConversationId ? (
