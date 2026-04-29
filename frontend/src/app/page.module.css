@@ -490,12 +490,12 @@
   font-size: 0.78rem;
   font-weight: 700;
   color: #18345f;
-  background: rgba(255, 255, 255, 0.62);
+  background: rgba(255, 255, 255, 0.36);
   cursor: pointer;
 }
 
 .actionMenuItem:hover {
-  background: rgba(239, 245, 255, 0.92);
+  background: rgba(239, 245, 255, 0.52);
 }
 
 .actionMenuItemDanger {
@@ -503,7 +503,7 @@
 }
 
 .actionMenuItemDanger:hover {
-  background: #fff0f3;
+  background: rgba(255, 240, 243, 0.56);
 }
 
 .renameEditor {
