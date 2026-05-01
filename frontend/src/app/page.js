@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  createConversation as createConversationApi,
+  deleteConversation as deleteConversationApi,
+  getConversations,
+  renameConversation as renameConversationApi,
+} from "../lib/conversationsApi";
 import styles from "./page.module.css";
 
 const API =
@@ -23,6 +30,15 @@ export default function Page() {
   // Conversations
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState(null);
+  const [renamingConversationId, setRenamingConversationId] = useState(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState("");
+  const [deletingConversationId, setDeletingConversationId] = useState(null);
+  const [openActionMenuConversationId, setOpenActionMenuConversationId] = useState(null);
+  const [contextMenuPosition, setContextMenuPosition] = useState(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const actionMenuRef = useRef(null);
 
   // Messages
   const [messages, setMessages] = useState([]);
@@ -53,17 +69,15 @@ export default function Page() {
   }
 
   async function ensureAtLeastOneConversation(t = token) {
-    const data = await apiJson("/conversations", "GET", null, t);
-    const list = data.conversations || [];
+    const list = await getConversations({ apiBaseUrl: API, token: t });
     setConversations(list);
 
     // 如果沒有聊天室，自動建立一個
     if (list.length === 0) {
-      const created = await apiJson("/conversations", "POST", { title: "New Chat" }, t);
+      const created = await createConversationApi({ apiBaseUrl: API, token: t, title: "New Chat" });
       const newId = created.conversation_id;
       // 重新載入列表
-      const data2 = await apiJson("/conversations", "GET", null, t);
-      const list2 = data2.conversations || [];
+      const list2 = await getConversations({ apiBaseUrl: API, token: t });
       setConversations(list2);
 
       setActiveConversationId(newId);
@@ -164,16 +178,19 @@ export default function Page() {
     setMessages([]);
     setMessage("");
     setUploadInfo("");
+    setRenamingConversationId(null);
+    setRenameDraft("");
+    setRenameLoading(false);
+    setRenameError("");
   }
 
   // ---------- conversations ----------
   async function createConversation() {
     try {
-      const created = await apiJson("/conversations", "POST", { title: "New Chat" });
+      const created = await createConversationApi({ apiBaseUrl: API, token, title: "New Chat" });
       const newId = created.conversation_id;
 
-      const data2 = await apiJson("/conversations", "GET");
-      const list2 = data2.conversations || [];
+      const list2 = await getConversations({ apiBaseUrl: API, token });
       setConversations(list2);
 
       setActiveConversationId(newId);
@@ -184,13 +201,161 @@ export default function Page() {
   }
 
   async function selectConversation(id) {
+    if (renameLoading || deletingConversationId !== null) return;
     setActiveConversationId(id);
+    setRenameError("");
     try {
       await loadMessages(id);
     } catch (e) {
       alert(`載入訊息失敗：${e.message}`);
     }
   }
+
+  function closeActionMenu() {
+    setOpenActionMenuConversationId(null);
+    setContextMenuPosition(null);
+  }
+
+  function startRenameConversation(conversation) {
+    if (renameLoading || deletingConversationId !== null) return;
+    closeActionMenu();
+    setRenamingConversationId(conversation.id);
+    setRenameDraft(conversation.title || "");
+    setRenameError("");
+  }
+
+  function cancelRenameConversation() {
+    if (renameLoading || deletingConversationId !== null) return;
+    setRenamingConversationId(null);
+    setRenameDraft("");
+    setRenameError("");
+  }
+
+  async function saveRenameConversation(conversationId) {
+    const normalized = renameDraft.trim();
+    if (!normalized) {
+      setRenameError("名稱不可為空白");
+      return;
+    }
+    if (normalized.length > 80) {
+      setRenameError("名稱不可超過 80 字元");
+      return;
+    }
+
+    setRenameLoading(true);
+    setRenameError("");
+    try {
+      await renameConversationApi({
+        apiBaseUrl: API,
+        token,
+        conversationId,
+        title: normalized,
+      });
+      setConversations((prev) =>
+        prev.map((conversation) =>
+          conversation.id === conversationId ? { ...conversation, title: normalized } : conversation
+        )
+      );
+      setRenamingConversationId(null);
+      setRenameDraft("");
+    } catch (e) {
+      if (e?.code === "NOT_IMPLEMENTED" || e?.status === 404 || e?.status === 501) {
+        setRenameError("後端尚未開通改名功能。");
+        return;
+      }
+      setRenameError(`改名失敗：${e.message}`);
+    } finally {
+      setRenameLoading(false);
+    }
+  }
+
+  async function handleDeleteConversation(conversationId) {
+    if (renameLoading || deletingConversationId !== null) return;
+
+    const targetConversation = conversations.find((conversation) => conversation.id === conversationId);
+    if (!targetConversation) return;
+
+    const confirmed = window.confirm(`確定要刪除「${targetConversation.title}」嗎？此操作無法復原。`);
+    if (!confirmed) return;
+
+    closeActionMenu();
+    setDeletingConversationId(conversationId);
+    setRenameError("");
+
+    try {
+      await deleteConversationApi({ apiBaseUrl: API, token, conversationId });
+
+      const currentList = await getConversations({ apiBaseUrl: API, token });
+      setConversations(currentList);
+
+      if (currentList.length === 0) {
+        await ensureAtLeastOneConversation();
+        return;
+      }
+
+      const activeStillExists = currentList.some((conversation) => conversation.id === activeConversationId);
+      if (activeStillExists) return;
+
+      const deletedIndex = conversations.findIndex((conversation) => conversation.id === conversationId);
+      const fallbackConversation = currentList[Math.min(deletedIndex, currentList.length - 1)] || currentList[0];
+      setActiveConversationId(fallbackConversation.id);
+      await loadMessages(fallbackConversation.id);
+    } catch (e) {
+      if (e?.code === "NOT_IMPLEMENTED" || e?.status === 404 || e?.status === 501) {
+        setRenameError("後端尚未開通刪除聊天室功能。");
+        return;
+      }
+      setRenameError(`刪除聊天室失敗：${e.message}`);
+    } finally {
+      setDeletingConversationId(null);
+    }
+  }
+
+  function toggleActionMenu(conversationId) {
+    if (renameLoading || deletingConversationId !== null) return;
+    if (openActionMenuConversationId === conversationId) {
+      closeActionMenu();
+      return;
+    }
+    setOpenActionMenuConversationId(conversationId);
+    setContextMenuPosition(null);
+  }
+
+  function openActionMenuByContextMenu(event, conversationId) {
+    if (renameLoading || deletingConversationId !== null) return;
+    event.preventDefault();
+    setOpenActionMenuConversationId(conversationId);
+    setContextMenuPosition({ x: event.clientX, y: event.clientY });
+  }
+
+  useEffect(() => {
+    if (openActionMenuConversationId === null) return undefined;
+
+    function handleOutsideClick(event) {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+        closeActionMenu();
+      }
+    }
+
+    function handleEscape(event) {
+      if (event.key === "Escape") {
+        closeActionMenu();
+      }
+    }
+
+    document.addEventListener("mousedown", handleOutsideClick);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleOutsideClick);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [openActionMenuConversationId]);
+
+  useEffect(() => {
+    if (renamingConversationId !== null) {
+      closeActionMenu();
+    }
+  }, [renamingConversationId]);
 
   // ---------- chat ----------
   async function sendMessage() {
@@ -364,53 +529,197 @@ export default function Page() {
   return (
     <main className={styles.chatPage}>
       <div className={styles.authBackdrop} />
-      <section className={styles.chatShell}>
-        <aside className={styles.chatSidebar}>
-          <div className={styles.sidebarHeader}>
-            <div>
-              <p className={styles.sidebarKicker}>GDG Campus NTPU</p>
-              <h2 className={styles.sidebarTitle}>Chat Lounge</h2>
-            </div>
-            <button type="button" className={styles.sidebarGhostButton} onClick={logout}>
-              登出
-            </button>
-          </div>
-
-          <button type="button" className={styles.newChatButton} onClick={createConversation}>
-            + 新增聊天室
-          </button>
-
-          <div className={styles.conversationList}>
-            {conversations.length === 0 ? (
-              <p className={styles.sidebarEmpty}>目前沒有聊天室，先建立一個吧。</p>
-            ) : (
-              conversations.map((c) => {
-                const active = c.id === activeConversationId;
-                return (
-                  <button
-                    type="button"
-                    key={c.id}
-                    onClick={() => selectConversation(c.id)}
-                    className={`${styles.conversationCard} ${active ? styles.conversationCardActive : ""}`}
-                    title={c.created_at}
-                  >
-                    <span className={styles.conversationTitle}>{c.title}</span>
-                    <span className={styles.conversationMeta}>Conversation #{c.id}</span>
-                  </button>
-                );
-              })
+      <section className={`${styles.chatShell} ${isSidebarCollapsed ? styles.chatShellCollapsed : ""}`}>
+        <aside className={`${styles.chatSidebar} ${isSidebarCollapsed ? styles.chatSidebarCollapsed : ""}`}>
+          <div className={`${styles.sidebarHeader} ${isSidebarCollapsed ? styles.sidebarHeaderCollapsed : ""}`}>
+            {!isSidebarCollapsed && (
+              <div>
+                <p className={styles.sidebarKicker}>GDG Campus NTPU</p>
+                <h2 className={styles.sidebarTitle}>Chat Lounge</h2>
+              </div>
             )}
+            <div className={styles.sidebarActions}>
+              <button
+                type="button"
+                className={styles.sidebarGhostButton}
+                onClick={() => setIsSidebarCollapsed((prev) => !prev)}
+                aria-label={isSidebarCollapsed ? "展開側欄" : "收合側欄"}
+                title={isSidebarCollapsed ? "展開側欄" : "收合側欄"}
+              >
+                {isSidebarCollapsed ? "»" : "«"}
+              </button>
+              <button
+                type="button"
+                className={styles.sidebarGhostButton}
+                onClick={logout}
+                aria-label="登出"
+                title="登出"
+              >
+                ⎋
+              </button>
+            </div>
           </div>
+
+          {!isSidebarCollapsed && (
+            <button type="button" className={styles.newChatButton} onClick={createConversation}>
+              + 新增聊天室
+            </button>
+          )}
+
+          {!isSidebarCollapsed && (
+            <>
+              <div className={styles.conversationList}>
+                {conversations.length === 0 ? (
+                  <p className={styles.sidebarEmpty}>目前沒有聊天室，先建立一個吧。</p>
+                ) : (
+                  conversations.map((c) => {
+                    const active = c.id === activeConversationId;
+                    const isRenaming = c.id === renamingConversationId;
+                    return (
+                      <article
+                        key={c.id}
+                        className={`${styles.conversationCard} ${active ? styles.conversationCardActive : ""}`}
+                        title={c.created_at}
+                        onContextMenu={(event) => openActionMenuByContextMenu(event, c.id)}
+                      >
+                        {isRenaming ? (
+                          <div className={styles.renameEditor}>
+                            <input
+                              className={styles.renameInput}
+                              value={renameDraft}
+                              maxLength={80}
+                              onChange={(e) => {
+                                setRenameDraft(e.target.value);
+                                if (renameError) setRenameError("");
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  saveRenameConversation(c.id);
+                                }
+                                if (e.key === "Escape") {
+                                  e.preventDefault();
+                                  cancelRenameConversation();
+                                }
+                              }}
+                              autoFocus
+                              aria-label="聊天室新名稱"
+                            />
+                            <div className={styles.renameActions}>
+                              <button
+                                type="button"
+                                className={styles.renameSaveButton}
+                                onClick={() => saveRenameConversation(c.id)}
+                                disabled={renameLoading}
+                              >
+                                {renameLoading ? "儲存中..." : "儲存"}
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.renameCancelButton}
+                                onClick={cancelRenameConversation}
+                                disabled={renameLoading}
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className={styles.conversationBody}>
+                            <button
+                              type="button"
+                              className={styles.conversationSelectButton}
+                              onClick={() => selectConversation(c.id)}
+                            >
+                              <span className={styles.conversationTitle}>{c.title}</span>
+                              <span className={styles.conversationMeta}>Conversation #{c.id}</span>
+                            </button>
+                            <div className={styles.conversationMenuWrap}>
+                              <button
+                                type="button"
+                                className={styles.menuTriggerButton}
+                                onClick={() => toggleActionMenu(c.id)}
+                                disabled={renameLoading || deletingConversationId !== null}
+                                aria-label="聊天室操作選單"
+                                aria-haspopup="menu"
+                                aria-expanded={openActionMenuConversationId === c.id}
+                              >
+                                ⋮
+                              </button>
+                              {openActionMenuConversationId === c.id && (
+                                <div
+                                  ref={actionMenuRef}
+                                  className={`${styles.conversationActionMenu} ${
+                                    contextMenuPosition ? styles.conversationActionMenuContext : ""
+                                  }`}
+                                  style={
+                                    contextMenuPosition
+                                      ? {
+                                          left: contextMenuPosition.x,
+                                          top: contextMenuPosition.y,
+                                          position: "fixed",
+                                        }
+                                      : undefined
+                                  }
+                                  role="menu"
+                                  aria-label="聊天室操作"
+                                >
+                                  <button
+                                    type="button"
+                                    className={styles.actionMenuItem}
+                                    onClick={() => startRenameConversation(c)}
+                                    role="menuitem"
+                                  >
+                                    改名
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={`${styles.actionMenuItem} ${styles.actionMenuItemDanger}`}
+                                    onClick={() => handleDeleteConversation(c.id)}
+                                    role="menuitem"
+                                  >
+                                    {deletingConversationId === c.id ? "刪除中..." : "刪除"}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+              {renameError && (
+                <p className={styles.renameError} role="alert" aria-live="polite">
+                  {renameError}
+                </p>
+              )}
+            </>
+          )}
         </aside>
 
         <section className={`${styles.chatMain} ${!ENABLE_FILE_UI ? styles.chatMainCompact : ""}`}>
           <header className={styles.chatTopBar}>
-            <div>
-              <p className={styles.chatTopKicker}>GDG Chat Workspace</p>
-              <h3 className={styles.chatTopTitle}>
-                {activeConversation ? activeConversation.title : "請先選擇聊天室"}
-              </h3>
+            <div className={styles.chatTopMain}>
+              <div>
+                <p className={styles.chatTopKicker}>GDG Chat Workspace</p>
+                <h3 className={styles.chatTopTitle}>
+                  {activeConversation ? activeConversation.title : "請先選擇聊天室"}
+                </h3>
+              </div>
+              <div className={styles.entryActions}>
+                <Link href="/teacher" className={styles.entryActionButton}>
+                  老師：上傳題目與解答
+                </Link>
+                <Link href="/student" className={styles.entryActionButton}>
+                  學生：開始作答
+                </Link>
+              </div>
             </div>
+            <p className={styles.prototypeHint}>
+              Prototype 導覽：老師/學生頁為前端示範流程，尚未串接正式後端評分與上傳 API。
+            </p>
             <span className={styles.chatTopMeta}>
               {activeConversation
                 ? `Conversation #${activeConversation.id}`
