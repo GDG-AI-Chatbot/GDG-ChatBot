@@ -23,6 +23,7 @@ export default function Page() {
   const [mode, setMode] = useState("login"); // login | register
   const [username, setUsername] = useState("Polly");
   const [password, setPassword] = useState("123");
+  const [registerRole, setRegisterRole] = useState("");
   const [token, setToken] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
@@ -122,13 +123,18 @@ export default function Page() {
       setAuthError("請輸入帳號與密碼");
       return;
     }
+    if (!registerRole) {
+      setAuthError("請選擇角色（學生或老師）");
+      return;
+    }
 
     setAuthLoading(true);
     setAuthError("");
     try {
-      await apiJson("/auth/register", "POST", { username: user, password: pw }, "");
+      await apiJson("/auth/register", "POST", { username: user, password: pw, role: registerRole }, "");
       alert("註冊成功！請登入");
       setMode("login");
+      setRegisterRole("");
     } catch (e) {
       setAuthError(`註冊失敗：${e.message}`);
     } finally {
@@ -455,6 +461,7 @@ export default function Page() {
                 onClick={() => {
                   setMode("login");
                   setAuthError("");
+                  setRegisterRole("");
                 }}
               >
                 登入
@@ -503,6 +510,21 @@ export default function Page() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </label>
+
+              {mode === "register" && (
+                <label className={styles.inputLabel}>
+                  角色
+                  <select
+                    className={`${styles.inputField} ${styles.selectField}`}
+                    value={registerRole}
+                    onChange={(e) => setRegisterRole(e.target.value)}
+                  >
+                    <option value="">請選擇角色</option>
+                    <option value="student">學生</option>
+                    <option value="teacher">老師</option>
+                  </select>
+                </label>
+              )}
 
               {authError && (
                 <p className={styles.authError} role="alert" aria-live="polite">
