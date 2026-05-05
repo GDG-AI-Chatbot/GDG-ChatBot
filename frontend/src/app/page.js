@@ -24,9 +24,11 @@ export default function Page() {
   const [username, setUsername] = useState("Polly");
   const [password, setPassword] = useState("123");
   const [registerRole, setRegisterRole] = useState("");
+  const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
   const [token, setToken] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const roleMenuRef = useRef(null);
 
   // Conversations
   const [conversations, setConversations] = useState([]);
@@ -135,6 +137,7 @@ export default function Page() {
       alert("註冊成功！請登入");
       setMode("login");
       setRegisterRole("");
+      setIsRoleMenuOpen(false);
     } catch (e) {
       setAuthError(`註冊失敗：${e.message}`);
     } finally {
@@ -184,11 +187,36 @@ export default function Page() {
     setMessages([]);
     setMessage("");
     setUploadInfo("");
+    setRegisterRole("");
+    setIsRoleMenuOpen(false);
     setRenamingConversationId(null);
     setRenameDraft("");
     setRenameLoading(false);
     setRenameError("");
   }
+
+  useEffect(() => {
+    if (!isRoleMenuOpen) return undefined;
+
+    function handleRoleMenuOutsideClick(event) {
+      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target)) {
+        setIsRoleMenuOpen(false);
+      }
+    }
+
+    function handleRoleMenuEscape(event) {
+      if (event.key === "Escape") {
+        setIsRoleMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleRoleMenuOutsideClick);
+    document.addEventListener("keydown", handleRoleMenuEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleRoleMenuOutsideClick);
+      document.removeEventListener("keydown", handleRoleMenuEscape);
+    };
+  }, [isRoleMenuOpen]);
 
   // ---------- conversations ----------
   async function createConversation() {
@@ -460,6 +488,7 @@ export default function Page() {
                 className={`${styles.modeButton} ${mode === "login" ? styles.modeButtonActive : ""}`}
                 onClick={() => {
                   setMode("login");
+                  setIsRoleMenuOpen(false);
                   setAuthError("");
                   setRegisterRole("");
                 }}
@@ -471,6 +500,7 @@ export default function Page() {
                 className={`${styles.modeButton} ${mode === "register" ? styles.modeButtonActive : ""}`}
                 onClick={() => {
                   setMode("register");
+                  setIsRoleMenuOpen(false);
                   setAuthError("");
                 }}
               >
@@ -514,15 +544,66 @@ export default function Page() {
               {mode === "register" && (
                 <label className={styles.inputLabel}>
                   角色
-                  <select
-                    className={`${styles.inputField} ${styles.selectField}`}
-                    value={registerRole}
-                    onChange={(e) => setRegisterRole(e.target.value)}
-                  >
-                    <option value="">請選擇角色</option>
-                    <option value="student">學生</option>
-                    <option value="teacher">老師</option>
-                  </select>
+                  <div className={styles.roleSelect} ref={roleMenuRef}>
+                    <button
+                      type="button"
+                      className={`${styles.inputField} ${styles.roleTrigger} ${
+                        !registerRole ? styles.roleTriggerPlaceholder : ""
+                      }`}
+                      onClick={() => setIsRoleMenuOpen((prev) => !prev)}
+                      aria-haspopup="listbox"
+                      aria-expanded={isRoleMenuOpen}
+                      aria-label="選擇角色"
+                    >
+                      <span>
+                        {registerRole === "student"
+                          ? "學生"
+                          : registerRole === "teacher"
+                            ? "老師"
+                            : "請選擇角色"}
+                      </span>
+                      <span
+                        className={`${styles.roleTriggerChevron} ${
+                          isRoleMenuOpen ? styles.roleTriggerChevronOpen : ""
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {isRoleMenuOpen && (
+                      <ul className={styles.roleMenu} role="listbox" aria-label="角色選單">
+                        <li>
+                          <button
+                            type="button"
+                            className={`${styles.roleMenuItem} ${
+                              registerRole === "student" ? styles.roleMenuItemActive : ""
+                            }`}
+                            onClick={() => {
+                              setRegisterRole("student");
+                              setIsRoleMenuOpen(false);
+                              setAuthError("");
+                            }}
+                          >
+                            學生
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            className={`${styles.roleMenuItem} ${
+                              registerRole === "teacher" ? styles.roleMenuItemActive : ""
+                            }`}
+                            onClick={() => {
+                              setRegisterRole("teacher");
+                              setIsRoleMenuOpen(false);
+                              setAuthError("");
+                            }}
+                          >
+                            老師
+                          </button>
+                        </li>
+                      </ul>
+                    )}
+                  </div>
                 </label>
               )}
 
