@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import {
   createConversation as createConversationApi,
   deleteConversation as deleteConversationApi,
@@ -11,9 +12,7 @@ import styles from "./page.module.css";
 
 const API =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
-    ? window.location.protocol + "//" + window.location.hostname + ":8000"
-    : "http://127.0.0.1:8000");
+  (typeof window !== "undefined" ? "/api" : "http://127.0.0.1:8000");
 
 export default function Page() {
   const ENABLE_FILE_UI = false;
@@ -22,9 +21,12 @@ export default function Page() {
   const [mode, setMode] = useState("login"); // login | register
   const [username, setUsername] = useState("Polly");
   const [password, setPassword] = useState("123");
+  const [registerRole, setRegisterRole] = useState("");
+  const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
   const [token, setToken] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
+  const roleMenuRef = useRef(null);
 
   // Conversations
   const [conversations, setConversations] = useState([]);
@@ -100,6 +102,10 @@ export default function Page() {
   // ---------- lifecycle ----------
   useEffect(() => {
     const t = localStorage.getItem("token");
+    const storedRole = localStorage.getItem("auth_role");
+    if (storedRole === "student" || storedRole === "teacher") {
+      setRegisterRole(storedRole);
+    }
     if (t) {
       setToken(t);
       // 登入狀態下：載入聊天室列表 + 預設選一個
@@ -121,13 +127,19 @@ export default function Page() {
       setAuthError("請輸入帳號與密碼");
       return;
     }
+    if (!registerRole) {
+      setAuthError("請選擇角色（學生或老師）");
+      return;
+    }
 
     setAuthLoading(true);
     setAuthError("");
     try {
-      await apiJson("/auth/register", "POST", { username: user, password: pw }, "");
+      await apiJson("/auth/register", "POST", { username: user, password: pw, role: registerRole }, "");
       alert("註冊成功！請登入");
       setMode("login");
+      setRegisterRole("");
+      setIsRoleMenuOpen(false);
     } catch (e) {
       setAuthError(`註冊失敗：${e.message}`);
     } finally {
@@ -148,6 +160,11 @@ export default function Page() {
     try {
       const data = await apiJson("/auth/login", "POST", { username: user, password: pw }, "");
       localStorage.setItem("token", data.access_token);
+      if (registerRole === "student" || registerRole === "teacher") {
+        localStorage.setItem("auth_role", registerRole);
+      } else {
+        localStorage.removeItem("auth_role");
+      }
       setToken(data.access_token);
 
       // 登入後：載入聊天室列表/預設聊天室
@@ -171,17 +188,43 @@ export default function Page() {
 
   function logout() {
     localStorage.removeItem("token");
+    localStorage.removeItem("auth_role");
     setToken("");
     setConversations([]);
     setActiveConversationId(null);
     setMessages([]);
     setMessage("");
     setUploadInfo("");
+    setRegisterRole("");
+    setIsRoleMenuOpen(false);
     setRenamingConversationId(null);
     setRenameDraft("");
     setRenameLoading(false);
     setRenameError("");
   }
+
+  useEffect(() => {
+    if (!isRoleMenuOpen) return undefined;
+
+    function handleRoleMenuOutsideClick(event) {
+      if (roleMenuRef.current && !roleMenuRef.current.contains(event.target)) {
+        setIsRoleMenuOpen(false);
+      }
+    }
+
+    function handleRoleMenuEscape(event) {
+      if (event.key === "Escape") {
+        setIsRoleMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleRoleMenuOutsideClick);
+    document.addEventListener("keydown", handleRoleMenuEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleRoleMenuOutsideClick);
+      document.removeEventListener("keydown", handleRoleMenuEscape);
+    };
+  }, [isRoleMenuOpen]);
 
   // ---------- conversations ----------
   async function createConversation() {
@@ -453,6 +496,7 @@ export default function Page() {
                 className={`${styles.modeButton} ${mode === "login" ? styles.modeButtonActive : ""}`}
                 onClick={() => {
                   setMode("login");
+                  setIsRoleMenuOpen(false);
                   setAuthError("");
                 }}
               >
@@ -463,6 +507,7 @@ export default function Page() {
                 className={`${styles.modeButton} ${mode === "register" ? styles.modeButtonActive : ""}`}
                 onClick={() => {
                   setMode("register");
+                  setIsRoleMenuOpen(false);
                   setAuthError("");
                 }}
               >
@@ -502,6 +547,75 @@ export default function Page() {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </label>
+
+              {(mode === "register" || mode === "login") && (
+                <label className={styles.inputLabel}>
+                  角色
+                  <div className={styles.roleSelect} ref={roleMenuRef}>
+                    <button
+                      type="button"
+                      className={`${styles.inputField} ${styles.roleTrigger} ${
+                        !registerRole ? styles.roleTriggerPlaceholder : ""
+                      }`}
+                      onClick={() => setIsRoleMenuOpen((prev) => !prev)}
+                      aria-haspopup="listbox"
+                      aria-expanded={isRoleMenuOpen}
+                      aria-label="選擇角色"
+                    >
+                      <span>
+                        {registerRole === "student"
+                          ? "學生"
+                          : registerRole === "teacher"
+                            ? "老師"
+                            : "請選擇角色"}
+                      </span>
+                      <span
+                        className={`${styles.roleTriggerChevron} ${
+                          isRoleMenuOpen ? styles.roleTriggerChevronOpen : ""
+                        }`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {isRoleMenuOpen && (
+                      <ul className={styles.roleMenu} role="listbox" aria-label="角色選單">
+                        <li>
+                          <button
+                            type="button"
+                            className={`${styles.roleMenuItem} ${
+                              registerRole === "student" ? styles.roleMenuItemActive : ""
+                            }`}
+                            onClick={() => {
+                              setRegisterRole("student");
+                              setIsRoleMenuOpen(false);
+                              setAuthError("");
+                            }}
+                          >
+                            學生
+                          </button>
+                        </li>
+                        <li>
+                          <button
+                            type="button"
+                            className={`${styles.roleMenuItem} ${
+                              registerRole === "teacher" ? styles.roleMenuItemActive : ""
+                            }`}
+                            onClick={() => {
+                              setRegisterRole("teacher");
+                              setIsRoleMenuOpen(false);
+                              setAuthError("");
+                            }}
+                          >
+                            老師
+                          </button>
+                        </li>
+                      </ul>
+                    )}
+                  </div>
+                  {mode === "login" && (
+                    <span className={styles.authHint}>目前僅前端預留，登入流程暫不驗證角色。</span>
+                  )}
+                </label>
+              )}
 
               {authError && (
                 <p className={styles.authError} role="alert" aria-live="polite">
@@ -700,12 +814,25 @@ export default function Page() {
 
         <section className={`${styles.chatMain} ${!ENABLE_FILE_UI ? styles.chatMainCompact : ""}`}>
           <header className={styles.chatTopBar}>
-            <div>
-              <p className={styles.chatTopKicker}>GDG Chat Workspace</p>
-              <h3 className={styles.chatTopTitle}>
-                {activeConversation ? activeConversation.title : "請先選擇聊天室"}
-              </h3>
+            <div className={styles.chatTopMain}>
+              <div>
+                <p className={styles.chatTopKicker}>GDG Chat Workspace</p>
+                <h3 className={styles.chatTopTitle}>
+                  {activeConversation ? activeConversation.title : "請先選擇聊天室"}
+                </h3>
+              </div>
+              <div className={styles.entryActions}>
+                <Link href="/teacher" className={styles.entryActionButton}>
+                  老師：上傳題目與解答
+                </Link>
+                <Link href="/student" className={styles.entryActionButton}>
+                  學生：開始作答
+                </Link>
+              </div>
             </div>
+            <p className={styles.prototypeHint}>
+              Prototype 導覽：老師/學生頁為前端示範流程，尚未串接正式後端評分與上傳 API。
+            </p>
             <span className={styles.chatTopMeta}>
               {activeConversation
                 ? `Conversation #${activeConversation.id}`
