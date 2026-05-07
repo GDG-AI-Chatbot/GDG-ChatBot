@@ -43,7 +43,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
 # 讓前端能呼叫後端（開發階段先全部允許）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://100.117.24.89:3000", "https://wedgier-reparable-carlton.ngrok-free.dev"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
