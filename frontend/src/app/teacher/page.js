@@ -1,8 +1,16 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { uploadQuestion, getAllQuestions, deleteQuestion, updateQuestion } from "../../lib/conversationsApi";
 import styles from "./page.module.css";
+
+const API =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined"
+    ? window.location.protocol + "//" + window.location.hostname + ":8000"
+    : "http://127.0.0.1:8000");
 
 const STORAGE_KEY = "gdg_teacher_mock_questions_v1";
 
@@ -21,39 +29,49 @@ function createDefaultQuestion() {
 }
 
 export default function TeacherPage() {
+  const router = useRouter();
   const [question, setQuestion] = useState(createDefaultQuestion);
+  const [questions, setQuestions] = useState([]);
+  const [editingId, setEditingId] = useState(null);
   const [notice, setNotice] = useState("");
   const [noticeType, setNoticeType] = useState("success");
+  const [loading, setLoading] = useState(false);
+  const [token, setToken] = useState("");
+  const [isAuthorized, setIsAuthorized] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return;
+    const storedToken = window.localStorage.getItem("token");
+    const storedRole = window.localStorage.getItem("role");
 
-      const safeQuestion = {
-        prompt: typeof parsed.prompt === "string" ? parsed.prompt : "",
-        options: {
-          A: typeof parsed.options?.A === "string" ? parsed.options.A : "",
-          B: typeof parsed.options?.B === "string" ? parsed.options.B : "",
-          C: typeof parsed.options?.C === "string" ? parsed.options.C : "",
-          D: typeof parsed.options?.D === "string" ? parsed.options.D : "",
-        },
-        correctOption:
-          parsed.correctOption === "A" || parsed.correctOption === "B" || parsed.correctOption === "C" || parsed.correctOption === "D"
-            ? parsed.correctOption
-            : "A",
-        shortAnswer: typeof parsed.shortAnswer === "string" ? parsed.shortAnswer : "",
-      };
-
-      setQuestion(safeQuestion);
-    } catch (error) {
-      console.error("load mock question failed", error);
-      setNoticeType("error");
-      setNotice("讀取本地暫存失敗，已使用空白表單。");
+    if (!storedToken || storedRole !== "teacher") {
+      router.push("/");
+      return;
     }
-  }, []);
+
+    setToken(storedToken);
+    setIsAuthorized(true);
+    loadQuestions(storedToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
+
+  async function loadQuestions(tokenOverride) {
+    try {
+      const data = await getAllQuestions({ apiBaseUrl: API, token: tokenOverride ?? token });
+      setQuestions(data.questions || []);
+    } catch (error) {
+      console.error("Failed to load questions", error);
+      // Fallback to localStorage
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setQuestions([parsed]);
+        }
+      } catch (fallbackError) {
+        console.error("Fallback load failed", fallbackError);
+      }
+    }
+  }
 
   function updateOption(key, value) {
     setQuestion((prev) => ({
@@ -65,16 +83,90 @@ export default function TeacherPage() {
     }));
   }
 
-  function handleSaveMock() {
+  function startEditing(questionData) {
+    setQuestion({
+      prompt: questionData.prompt || "",
+      options: questionData.options || { A: "", B: "", C: "", D: "" },
+      correctOption: questionData.correct_option || "A",
+      shortAnswer: questionData.short_answer || "",
+    });
+    setEditingId(questionData.id);
+  }
+
+  function cancelEditing() {
+    setQuestion(createDefaultQuestion());
+    setEditingId(null);
+  }
+
+  async function handleSave() {
+    setLoading(true);
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(question));
+      const questionData = {
+        prompt: question.prompt,
+        options: question.options,
+        correct_option: question.correctOption,
+        short_answer: question.shortAnswer || null,
+      };
+
+      if (editingId) {
+        // 更新現有題目
+        await updateQuestion({
+          apiBaseUrl: API,
+          token,
+          questionId: editingId,
+          question: questionData,
+        });
+        setNotice("題目已更新");
+      } else {
+        // 新增題目
+        await uploadQuestion({
+          apiBaseUrl: API,
+          token,
+          question: questionData,
+        });
+        setNotice("題目上傳成功！");
+      }
+
       setNoticeType("success");
-      setNotice("暫存成功（mock）。目前尚未串接後端上傳 API。");
+      setQuestion(createDefaultQuestion());
+      setEditingId(null);
+      await loadQuestions(); // 重新加載題目列表
     } catch (error) {
-      console.error("save mock question failed", error);
+      console.error("Save question failed", error);
       setNoticeType("error");
-      setNotice("暫存失敗，請稍後再試。");
+      setNotice("保存失敗，請稍後再試。");
+    } finally {
+      setLoading(false);
     }
+  }
+
+  async function handleDelete(questionId) {
+    if (!confirm("確定要刪除這個題目嗎？")) return;
+
+    try {
+      await deleteQuestion({
+        apiBaseUrl: API,
+        token,
+        questionId,
+      });
+      setNotice("題目已刪除，並重新排序題號");
+      setNoticeType("success");
+      await loadQuestions();
+    } catch (error) {
+      console.error("Delete question failed", error);
+      setNoticeType("error");
+      setNotice("刪除失敗，請稍後再試。");
+    }
+  }
+
+  if (!isAuthorized) {
+    return (
+      <main className={styles.page}>
+        <section className={styles.card}>
+          <p>驗證中，請稍候...</p>
+        </section>
+      </main>
+    );
   }
 
   return (
@@ -84,13 +176,10 @@ export default function TeacherPage() {
           <Link href="/" className={styles.link}>
             返回主頁 / 聊天室
           </Link>
-          <Link href="/student" className={styles.link}>
-            前往學生作答頁
-          </Link>
         </div>
-        <p className={styles.badge}>Prototype / Mock Only（尚未串後端）</p>
-        <h1 className={styles.title}>老師端題目暫存原型</h1>
-        <p className={styles.subtitle}>尚未串接後端：目前僅提供前端狀態與 localStorage 暫存示範。</p>
+        <p className={styles.badge}>老師端題目上傳</p>
+        <h1 className={styles.title}>老師端題目上傳</h1>
+        <p className={styles.subtitle}>上傳題目到後端資料庫，並同步暫存到本地。</p>
 
         <label className={styles.label} htmlFor="prompt">
           題目內容
@@ -147,9 +236,16 @@ export default function TeacherPage() {
           onChange={(event) => setQuestion((prev) => ({ ...prev, shortAnswer: event.target.value }))}
         />
 
-        <button type="button" className={styles.saveButton} onClick={handleSaveMock}>
-          暫存題目（mock）
-        </button>
+        <div className={styles.buttonRow}>
+          <button type="button" className={styles.saveButton} onClick={handleSave} disabled={loading}>
+            {editingId ? "更新題目" : "上傳題目"}
+          </button>
+          {editingId && (
+            <button type="button" className={styles.cancelButton} onClick={cancelEditing}>
+              取消編輯
+            </button>
+          )}
+        </div>
 
         {notice ? (
           <p className={noticeType === "error" ? styles.errorNotice : styles.successNotice} role="status">
@@ -157,11 +253,52 @@ export default function TeacherPage() {
           </p>
         ) : null}
 
-        <div className={styles.linkRow}>
-          <Link href="/student" className={styles.link}>
-            以學生身分檢視題目
-          </Link>
-        </div>
+        {/* 題目列表 */}
+        <section className={styles.questionsSection}>
+          <h2 className={styles.sectionTitle}>已上傳的題目</h2>
+          {questions.length === 0 ? (
+            <p className={styles.emptyMessage}>尚未上傳任何題目</p>
+          ) : (
+            <div className={styles.questionsList}>
+              {questions.map((q) => (
+                <div key={q.id} className={styles.questionItem}>
+                  <div className={styles.questionContent}>
+                    <h3 className={styles.questionTitle}>
+                      題目 {q.question_number}：{q.prompt}
+                    </h3>
+                    <div className={styles.options}>
+                      {Object.entries(q.options).map(([key, value]) => (
+                        <div key={key} className={`${styles.option} ${q.correct_option === key ? styles.correctOption : ""}`}>
+                          {key}. {value}
+                        </div>
+                      ))}
+                    </div>
+                    {q.short_answer && (
+                      <p className={styles.shortAnswer}>參考答案：{q.short_answer}</p>
+                    )}
+                    <p className={styles.createdAt}>建立時間：{new Date(q.created_at).toLocaleString()}</p>
+                  </div>
+                  <div className={styles.questionActions}>
+                    <button
+                      type="button"
+                      className={styles.editButton}
+                      onClick={() => startEditing(q)}
+                    >
+                      編輯
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.deleteButton}
+                      onClick={() => handleDelete(q.id)}
+                    >
+                      刪除
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </section>
     </main>
   );

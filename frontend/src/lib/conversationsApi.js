@@ -84,3 +84,88 @@ export async function deleteConversation({ apiBaseUrl, token, conversationId }) 
     token,
   });
 }
+
+export async function uploadQuestion({ apiBaseUrl, token, question }) {
+  return requestJson({
+    apiBaseUrl,
+    path: "/questions/upload",
+    method: "POST",
+    token,
+    body: question,
+  });
+}
+
+export async function getLatestQuestion({ apiBaseUrl }) {
+  return requestJson({
+    apiBaseUrl,
+    path: "/questions/latest",
+    method: "GET",
+  });
+}
+
+export async function getAllQuestions({ apiBaseUrl, token }) {
+  return requestJson({
+    apiBaseUrl,
+    path: "/questions",
+    method: "GET",
+    token,
+  });
+}
+
+export async function getQuestion({ apiBaseUrl, questionId }) {
+  return requestJson({
+    apiBaseUrl,
+    path: `/questions/${questionId}`,
+    method: "GET",
+  });
+}
+
+export async function updateQuestion({ apiBaseUrl, token, questionId, question }) {
+  return requestJson({
+    apiBaseUrl,
+    path: `/questions/${questionId}`,
+    method: "PUT",
+    token,
+    body: question,
+  });
+}
+
+export async function deleteQuestion({ apiBaseUrl, token, questionId }) {
+  return requestJson({
+    apiBaseUrl,
+    path: `/questions/${questionId}`,
+    method: "DELETE",
+    token,
+  });
+}
+
+export async function submitAnswers({ apiBaseUrl, studentId, answers, token }) {
+  return requestJson({
+    apiBaseUrl,
+    path: "/student/answers",
+    method: "POST",
+    token,
+    body: {
+      student_id: studentId,
+      answers: answers,
+    },
+  });
+}
+
+export async function getStudentAnswers({ apiBaseUrl, studentId }) {
+  return requestJson({
+    apiBaseUrl,
+    path: `/student/answers/${studentId}`,
+    method: "GET",
+  });
+}
+
+export async function getStudentAnalysis({ apiBaseUrl, studentId, token }) {
+  return requestJson({
+    apiBaseUrl,
+    path: `/student/analysis/${studentId}`,
+    method: "GET",
+    token,
+    timeoutMs: 60000, // 分析可能較慢，延長超時到 60 秒
+  });
+}

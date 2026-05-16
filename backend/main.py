@@ -39,11 +39,12 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 app = FastAPI()
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/token")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="auth/token", auto_error=False)
 
 # 讓前端能呼叫後端（開發階段先全部允許）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -62,7 +63,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS users(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE NOT NULL,
-        password_hash TEXT NOT NULL
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'student'
     )
     """)
 
@@ -97,10 +99,50 @@ def init_db():
     """)
 
     cur.execute("""
+    CREATE TABLE IF NOT EXISTS questions(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        question_number INTEGER NOT NULL,
+        prompt TEXT NOT NULL,
+        options TEXT NOT NULL,  -- JSON string for options A,B,C,D
+        correct_option TEXT NOT NULL,
+        short_answer TEXT,
+        created_at TEXT NOT NULL
+    )
+    """)
+
+    # 為現有記錄添加題號（如果不存在）
+    try:
+        cur.execute("ALTER TABLE questions ADD COLUMN question_number INTEGER")
+        # 為現有記錄設置題號
+        cur.execute("UPDATE questions SET question_number = id WHERE question_number IS NULL")
+    except sqlite3.OperationalError:
+        # 欄位已存在，跳過
+        pass
+
+    cur.execute("""
     CREATE TABLE IF NOT EXISTS message_files(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         message_id INTEGER NOT NULL,
         file_id INTEGER NOT NULL
+    )
+    """)
+
+    # 若舊版 users table 沒有 role 欄位，嘗試新增（SQLite 若欄位已存在會拋出 OperationalError）
+    try:
+        cur.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'student'")
+    except sqlite3.OperationalError:
+        pass
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS student_answers(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_id INTEGER NOT NULL,
+        question_id INTEGER NOT NULL,
+        selected_option TEXT NOT NULL,
+        short_answer TEXT,
+        is_correct BOOLEAN NOT NULL,
+        submitted_at TEXT NOT NULL
     )
     """)
 
@@ -147,9 +189,10 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 # ====== JWT / Auth ======
-def create_token(user_id: int):
+def create_token(user_id: int, role: str):
     payload = {
         "sub": str(user_id),
+        "role": role,
         "exp": datetime.utcnow() + timedelta(days=7),
     }
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGO)
@@ -161,10 +204,47 @@ def require_user_id(token: str = Depends(oauth2_scheme)):
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
+
+def require_user(token: str = Depends(oauth2_scheme)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGO])
+        return {
+            "id": int(payload["sub"]),
+            "role": payload.get("role", "student"),
+        }
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+
+def require_teacher(user: dict = Depends(require_user)):
+    if user["role"] != "teacher":
+        raise HTTPException(status_code=403, detail="Teacher access required")
+    return user
+
+
+def require_student(user: dict = Depends(require_user)):
+    if user["role"] != "student":
+        raise HTTPException(status_code=403, detail="Student access required")
+    return user
+
+
+def get_optional_user(token: Optional[str] = Depends(oauth2_scheme_optional)):
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGO])
+        return {
+            "id": int(payload["sub"]),
+            "role": payload.get("role", "student"),
+        }
+    except Exception:
+        return None
+
 # ====== Request Models ======
 class RegisterIn(BaseModel):
     username: str
     password: str
+    role: Optional[str] = "student"  # "student" or "teacher"
 
 class LoginIn(BaseModel):
     username: str
@@ -178,6 +258,22 @@ class ChatIn(BaseModel):
     message: str
     file_ids: Optional[List[int]] = []
 
+class QuestionIn(BaseModel):
+    prompt: str
+    options: dict  # {"A": "", "B": "", "C": "", "D": ""}
+    correct_option: str
+    short_answer: Optional[str] = None
+
+class StudentAnswerItem(BaseModel):
+    question_id: int
+    selected_option: str
+    short_answer: Optional[str] = None
+    is_correct: bool
+
+class SubmitAnswersIn(BaseModel):
+    student_id: int
+    answers: List[StudentAnswerItem]
+
 # ====== Routes ======
 @app.get("/health")
 def health():
@@ -186,13 +282,16 @@ def health():
 @app.post("/auth/register")
 def register(data: RegisterIn):
     pw = data.password
+    role = (data.role or "student").lower()
+    if role not in ("student", "teacher"):
+        raise HTTPException(status_code=400, detail="Invalid role; must be 'student' or 'teacher'")
 
     conn = db()
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO users(username, password_hash) VALUES(?, ?)",
-            (data.username, hash_password(pw))
+            "INSERT INTO users(username, password_hash, role) VALUES(?, ?, ?)",
+            (data.username, hash_password(pw), role)
         )
         conn.commit()
     except sqlite3.IntegrityError:
@@ -205,15 +304,15 @@ def register(data: RegisterIn):
 def login(data: LoginIn):
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT id, password_hash FROM users WHERE username=?", (data.username,))
+    cur.execute("SELECT id, password_hash, role FROM users WHERE username=?", (data.username,))
     row = cur.fetchone()
     conn.close()
 
     if not row or not verify_password(data.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    token = create_token(row["id"])
-    return {"access_token": token}
+    token = create_token(row["id"], row["role"])
+    return {"access_token": token, "role": row["role"], "user_id": row["id"]}
 
 @app.post("/auth/token")
 def token(form_data: OAuth2PasswordRequestForm = Depends()):
@@ -223,7 +322,7 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
     """
     conn = db()
     cur = conn.cursor()
-    cur.execute("SELECT id, password_hash FROM users WHERE username=?", (form_data.username,))
+    cur.execute("SELECT id, password_hash, role FROM users WHERE username=?", (form_data.username,))
     row = cur.fetchone()
     conn.close()
 
@@ -233,13 +332,17 @@ def token(form_data: OAuth2PasswordRequestForm = Depends()):
     if not row or not verify_password(form_data.password, row["password_hash"]):
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-    access_token = create_token(row["id"])
-    return {"access_token": access_token, "token_type": "bearer"}
+    access_token = create_token(row["id"], row["role"])
+    return {"access_token": access_token, "token_type": "bearer", "role": row["role"], "user_id": row["id"]}
+
+@app.get("/auth/me")
+def auth_me(user: dict = Depends(require_user)):
+    return {"user_id": user["id"], "role": user["role"]}
 
 @app.post("/files/upload")
 def upload_file(file: UploadFile = File(...), user_id: int = Depends(require_user_id)):
     # 存檔到 uploads/
-    safe_name = file.filename.replace("/", "_").replace("\\", "_")
+    safe_name = (file.filename or "unnamed_file").replace("/", "_").replace("\\", "_")
     save_path = os.path.join(UPLOAD_DIR, f"{int(datetime.utcnow().timestamp())}_{safe_name}")
 
     with open(save_path, "wb") as f:
@@ -256,6 +359,281 @@ def upload_file(file: UploadFile = File(...), user_id: int = Depends(require_use
     conn.close()
 
     return {"file_id": file_id, "filename": safe_name}
+
+@app.post("/questions/upload")
+def upload_question(data: QuestionIn, user: dict = Depends(require_teacher)):
+    import json
+    user_id = user["id"]
+    conn = db()
+    cur = conn.cursor()
+    
+    # 獲取下一個題號
+    cur.execute("SELECT MAX(question_number) FROM questions WHERE user_id=?", (user_id,))
+    max_number = cur.fetchone()[0]
+    next_number = (max_number or 0) + 1
+    
+    cur.execute(
+        "INSERT INTO questions(user_id, question_number, prompt, options, correct_option, short_answer, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)",
+        (user_id, next_number, data.prompt, json.dumps(data.options), data.correct_option, data.short_answer, datetime.utcnow().isoformat())
+    )
+    conn.commit()
+    question_id = cur.lastrowid
+    conn.close()
+
+    return {"question_id": question_id, "question_number": next_number}
+
+@app.put("/questions/{question_id}")
+def update_question(question_id: int, data: QuestionIn, user: dict = Depends(require_teacher)):
+    import json
+    user_id = user["id"]
+    conn = db()
+    cur = conn.cursor()
+    
+    # 檢查題目是否存在且屬於該用戶
+    cur.execute("SELECT id FROM questions WHERE id=? AND user_id=?", (question_id, user_id))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    # 更新題目
+    cur.execute(
+        "UPDATE questions SET prompt=?, options=?, correct_option=?, short_answer=? WHERE id=? AND user_id=?",
+        (data.prompt, json.dumps(data.options), data.correct_option, data.short_answer, question_id, user_id)
+    )
+    conn.commit()
+    conn.close()
+
+    return {"message": "Question updated"}
+
+@app.get("/questions/latest")
+def get_latest_question():
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, question_number, prompt, options, correct_option, short_answer, created_at FROM questions ORDER BY question_number DESC LIMIT 1"
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="No questions found")
+
+    import json
+    return {
+        "id": row["id"],
+        "question_number": row["question_number"],
+        "prompt": row["prompt"],
+        "options": json.loads(row["options"]),
+        "correct_option": row["correct_option"],
+        "short_answer": row["short_answer"],
+        "created_at": row["created_at"],
+    }
+
+@app.get("/questions")
+def get_all_questions(user: Optional[dict] = Depends(get_optional_user)):
+    conn = db()
+    cur = conn.cursor()
+
+    if user and user["role"] == "teacher":
+        cur.execute(
+            "SELECT id, question_number, prompt, options, correct_option, short_answer, created_at FROM questions WHERE user_id=? ORDER BY question_number ASC",
+            (user["id"],)
+        )
+    else:
+        cur.execute(
+            "SELECT id, question_number, prompt, options, correct_option, short_answer, created_at FROM questions ORDER BY question_number ASC"
+        )
+
+    rows = cur.fetchall()
+    conn.close()
+
+    import json
+    questions = []
+    for row in rows:
+        questions.append({
+            "id": row["id"],
+            "question_number": row["question_number"],
+            "prompt": row["prompt"],
+            "options": json.loads(row["options"]),
+            "correct_option": row["correct_option"],
+            "short_answer": row["short_answer"],
+            "created_at": row["created_at"],
+        })
+    return {"questions": questions}
+
+@app.get("/questions/{question_id}")
+def get_question(question_id: int):
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT id, question_number, prompt, options, correct_option, short_answer, created_at FROM questions WHERE id=?",
+        (question_id,)
+    )
+    row = cur.fetchone()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    import json
+    return {
+        "id": row["id"],
+        "question_number": row["question_number"],
+        "prompt": row["prompt"],
+        "options": json.loads(row["options"]),
+        "correct_option": row["correct_option"],
+        "short_answer": row["short_answer"],
+        "created_at": row["created_at"],
+    }
+
+@app.delete("/questions/{question_id}")
+def delete_question(question_id: int, user: dict = Depends(require_teacher)):
+    user_id = user["id"]
+    conn = db()
+    cur = conn.cursor()
+    # 檢查題目是否存在且屬於該用戶
+    cur.execute("SELECT id FROM questions WHERE id=? AND user_id=?", (question_id, user_id))
+    if not cur.fetchone():
+        conn.close()
+        raise HTTPException(status_code=404, detail="Question not found")
+    
+    cur.execute("DELETE FROM questions WHERE id=? AND user_id=?", (question_id, user_id))
+    
+    # 重新排序題號
+    cur.execute("SELECT id FROM questions WHERE user_id=? ORDER BY question_number ASC", (user_id,))
+    rows = cur.fetchall()
+    for i, row in enumerate(rows, 1):
+        cur.execute("UPDATE questions SET question_number=? WHERE id=?", (i, row["id"]))
+    
+    conn.commit()
+    conn.close()
+    return {"message": "Question deleted and renumbered"}
+
+@app.post("/student/answers")
+def submit_answers(data: SubmitAnswersIn, user: dict = Depends(require_student)):
+    if data.student_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Cannot submit answers for another student")
+    """接收並儲存學生的作答結果"""
+    conn = db()
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    """接收並儲存學生的作答結果"""
+    conn = db()
+    cur = conn.cursor()
+    now = datetime.utcnow().isoformat()
+    
+    try:
+        # 重新作答時先刪除該學生之前的所有紀錄
+        cur.execute(
+            "DELETE FROM student_answers WHERE student_id = ?",
+            (data.student_id,)
+        )
+
+        for answer in data.answers:
+            cur.execute(
+                """
+                INSERT INTO student_answers(student_id, question_id, selected_option, short_answer, is_correct, submitted_at)
+                VALUES(?, ?, ?, ?, ?, ?)
+                """,
+                (data.student_id, answer.question_id, answer.selected_option, answer.short_answer, answer.is_correct, now)
+            )
+        
+        conn.commit()
+        return {"message": "Answers submitted successfully", "submitted_at": now}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=400, detail=f"Failed to submit answers: {str(e)}")
+    finally:
+        conn.close()
+
+@app.get("/student/answers/{student_id}")
+def get_student_answers(student_id: int, user: dict = Depends(require_student)):
+    if student_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Cannot view another student's answers")
+    """取得某位學生的所有作答結果"""
+    conn = db()
+    cur = conn.cursor()
+    
+    try:
+        cur.execute(
+            """
+            SELECT sa.id, sa.question_id, q.question_number, q.prompt, 
+                   sa.selected_option, sa.short_answer, sa.is_correct, sa.submitted_at
+            FROM student_answers sa
+            JOIN questions q ON q.id = sa.question_id
+            WHERE sa.student_id = ?
+            ORDER BY sa.submitted_at DESC, q.question_number ASC
+            """,
+            (student_id,)
+        )
+        rows = [dict(r) for r in cur.fetchall()]
+        conn.close()
+        return {"answers": rows}
+    except Exception as e:
+        conn.close()
+        raise HTTPException(status_code=400, detail=f"Failed to retrieve answers: {str(e)}")
+
+@app.get("/student/analysis/{student_id}")
+def analyze_student_knowledge(student_id: int, user: dict = Depends(require_student)):
+    if student_id != user["id"]:
+        raise HTTPException(status_code=403, detail="Cannot analyze another student's answers")
+    """將學生作答資料整理成 prompt，送給 AI 進行知識盲區分析"""
+    conn = db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT q.question_number, q.prompt, q.options, q.correct_option,
+               sa.selected_option, sa.short_answer, sa.is_correct
+        FROM student_answers sa
+        JOIN questions q ON q.id = sa.question_id
+        WHERE sa.student_id = ?
+        ORDER BY q.question_number ASC
+        """,
+        (student_id,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="No answers found for this student")
+
+    import json
+
+    prompt_lines = [
+        "請協助分析這位學生的作答表現，找出知識盲區、答題弱點與學習建議。以下是學生的作答紀錄：",
+        "",
+    ]
+
+    for row in rows:
+        options = json.loads(row["options"])
+        prompt_lines.append(f"題目 {row['question_number']}：{row['prompt']}")
+        for key in ["A", "B", "C", "D"]:
+            if key in options:
+                prompt_lines.append(f"  {key}. {options[key]}")
+        prompt_lines.append(f"  學生答案：{row['selected_option']}")
+        prompt_lines.append(f"  正確答案：{row['correct_option']}")
+        prompt_lines.append(f"  是否正確：{'是' if row['is_correct'] else '否'}")
+        prompt_lines.append(f"  簡答回覆：{row['short_answer'] or '（無）'}")
+        prompt_lines.append("")
+
+    prompt_lines.append("請根據以上資料提供：")
+    prompt_lines.append("1. 學生的主要知識盲區或觀念不足點。")
+    prompt_lines.append("2. 他的錯誤模式，例如常在哪種題型或哪類概念出錯。")
+    prompt_lines.append("3. 最適合他的後續學習建議。")
+    prompt_lines.append("請用中文簡單精準回答，並條列出重點。")
+
+    prompt = "\n".join(prompt_lines)
+
+    analysis = provider.reply(
+        user_text=prompt,
+        conversation_id=0,
+        user_id=student_id,
+        files=None,
+    )
+
+    print(analysis)  # 先印出來看看
+
+    return {"analysis": analysis}
 
 @app.get("/files/{file_id}/download")
 def download_file(file_id: int, user_id: int = Depends(require_user_id)):

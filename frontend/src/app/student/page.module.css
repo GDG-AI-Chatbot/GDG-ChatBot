@@ -21,6 +21,16 @@
   margin-bottom: 10px;
 }
 
+.link {
+  color: #1a4f9b;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
 .badge {
   display: inline-block;
   margin: 0 0 12px;
@@ -43,7 +53,21 @@
   color: #49638f;
   line-height: 1.6;
 }
+.questionSelector {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid #dce8fb;
+  border-radius: 12px;
+  background: #fbfdff;
+}
 
+.select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #c7d4e8;
+  border-radius: 6px;
+  font-size: 14px;
+}
 .errorNotice {
   margin-top: 12px;
   border-radius: 10px;
@@ -162,6 +186,16 @@
   word-break: break-word;
 }
 
+.correct {
+  color: #0a5a0a;
+  font-weight: bold;
+}
+
+.incorrect {
+  color: #a52a2a;
+  font-weight: bold;
+}
+
 .links {
   margin-top: 18px;
 }
@@ -174,6 +208,111 @@
 
 .links a:hover {
   text-decoration: underline;
+}
+
+/* 新增樣式用於批量作答介面 */
+.progress {
+  margin: 16px 0;
+  padding: 12px 16px;
+  background: #f0f8ff;
+  border: 1px solid #b3d9ff;
+  border-radius: 8px;
+}
+
+.progressText {
+  margin: 0;
+  color: #1a4a7a;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.questionsContainer {
+  margin: 20px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.questionBlock {
+  border: 1px solid #d1e7ff;
+  border-radius: 12px;
+  padding: 20px;
+  background: #fafdff;
+}
+
+.questionTitle {
+  margin: 0 0 16px 0;
+  color: #142f5c;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.shortAnswerBlock {
+  margin-top: 16px;
+}
+
+.shortAnswerLabel {
+  display: block;
+  margin-bottom: 8px;
+  color: #2a4a7a;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.shortAnswerTextarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #bfcfe8;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #1a335c;
+  background: #ffffff;
+  resize: vertical;
+}
+
+.shortAnswerTextarea:focus {
+  outline: 2px solid #9bbcf2;
+  outline-offset: 1px;
+}
+
+.submitSection {
+  margin-top: 32px;
+  padding: 24px;
+  background: #f8fbff;
+  border: 1px solid #c7d9f2;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.submitButton {
+  border: 0;
+  border-radius: 10px;
+  padding: 14px 24px;
+  font-size: 16px;
+  font-weight: 700;
+  background: #1a57b4;
+  color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.submitButton:hover:not(.submitButtonDisabled) {
+  background: #184da0;
+}
+
+.submitButtonDisabled {
+  background: #cccccc;
+  cursor: not-allowed;
+}
+
+.submitWarning {
+  margin: 12px 0 0 0;
+  color: #d2691e;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 @media (max-width: 640px) {

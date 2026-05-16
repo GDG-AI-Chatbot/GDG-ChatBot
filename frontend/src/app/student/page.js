@@ -2,56 +2,188 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { getAllQuestions, submitAnswers } from "../../lib/conversationsApi";
 import styles from "./page.module.css";
 
-const STORAGE_KEY = "gdg_teacher_mock_questions_v1";
+const API =
+  process.env.NEXT_PUBLIC_API_URL ||
+  (typeof window !== "undefined"
+    ? window.location.protocol + "//" + window.location.hostname + ":8000"
+    : "http://127.0.0.1:8000");
 
 export default function StudentPage() {
-  const [mockQuestion, setMockQuestion] = useState(null);
+  const router = useRouter();
+  const [questions, setQuestions] = useState([]);
+  const [answers, setAnswers] = useState({});
+  const [token, setToken] = useState("");
+  const [studentId, setStudentId] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
   const [loadError, setLoadError] = useState("");
-  const [selectedOption, setSelectedOption] = useState("");
-  const [shortAnswer, setShortAnswer] = useState("");
-  const [submitted, setSubmitted] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== "object") return;
+    const storedToken = window.localStorage.getItem("token");
+    const storedRole = window.localStorage.getItem("role");
+    const storedUserId = window.localStorage.getItem("userId");
 
-      const prompt = typeof parsed.prompt === "string" ? parsed.prompt.trim() : "";
-      const normalizedOptions = ["A", "B", "C", "D"]
-        .map((choice) => {
-          const text = typeof parsed.options?.[choice] === "string" ? parsed.options[choice].trim() : "";
-          if (!text) return null;
-          return `${choice}. ${text}`;
-        })
-        .filter(Boolean);
-
-      if (!prompt || normalizedOptions.length === 0) return;
-
-      setMockQuestion({
-        id: "teacher-mock-q1",
-        title: `【Mock 單選題】${prompt}`,
-        options: normalizedOptions,
-        shortAnswerPrompt:
-          "【Mock 簡答題】請用 1-3 句補充你的作答理由或解題步驟。",
-      });
-    } catch (error) {
-      console.error("load teacher mock question failed", error);
-      setLoadError("讀取老師端暫存題目失敗，請返回主頁後再試。");
+    if (!storedToken || storedRole !== "student" || !storedUserId) {
+      router.push("/");
+      return;
     }
-  }, []);
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
-    if (!mockQuestion) return;
-    setSubmitted(true);
-  };
+    setToken(storedToken);
+    setStudentId(Number(storedUserId));
+    setAuthChecked(true);
+    loadAllQuestions(storedToken);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
-  const optionStatus = selectedOption ? `已作答：${selectedOption}` : "未作答";
-  const shortAnswerStatus = shortAnswer.trim() ? shortAnswer.trim() : "（未填寫）";
+  async function loadAllQuestions(tokenOverride) {
+    try {
+      const data = await getAllQuestions({ apiBaseUrl: API, token: tokenOverride ?? token });
+      const questionsList = data.questions || [];
+      setQuestions(questionsList);
+
+      // 初始化答案對象
+      const initialAnswers = {};
+      questionsList.forEach(q => {
+        initialAnswers[q.id] = {
+          selectedOption: "",
+          shortAnswer: "",
+        };
+      });
+      setAnswers(initialAnswers);
+    } catch (error) {
+      console.error("Failed to load questions from API", error);
+      setLoadError("載入題目失敗，請稍後再試。");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateAnswer(questionId, field, value) {
+    setAnswers(prev => ({
+      ...prev,
+      [questionId]: {
+        ...prev[questionId],
+        [field]: value,
+      },
+    }));
+  }
+
+  function isAllQuestionsAnswered() {
+    return questions.every(q => answers[q.id]?.selectedOption?.trim());
+  }
+
+  async function handleSubmit() {
+    if (!isAllQuestionsAnswered()) {
+      alert("請完成所有題目的作答再提交！");
+      return;
+    }
+
+    if (!studentId) {
+      alert("學生未登入，無法提交。");
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      // 準備結果數據以發送到後端
+      const resultsForBackend = questions.map(q => {
+        const answer = answers[q.id];
+        const isCorrect = answer.selectedOption === q.correct_option;
+
+        return {
+          question_id: q.id,
+          selected_option: answer.selectedOption,
+          short_answer: answer.shortAnswer,
+          is_correct: isCorrect,
+        };
+      });
+
+      // 發送到後端
+      await submitAnswers({
+        apiBaseUrl: API,
+        token,
+        studentId,
+        answers: resultsForBackend,
+      });
+
+      // 準備結果數據以存儲到sessionStorage（供結果頁面顯示）
+      const results = questions.map(q => {
+        const answer = answers[q.id];
+        const isCorrect = answer.selectedOption === q.correct_option;
+
+        return {
+          questionId: q.id,
+          questionNumber: q.question_number,
+          prompt: q.prompt,
+          options: q.options,
+          correctOption: q.correct_option,
+          selectedOption: answer.selectedOption,
+          shortAnswer: answer.shortAnswer,
+          isCorrect,
+        };
+      });
+
+      // 存儲到sessionStorage
+      sessionStorage.setItem("student_answers", JSON.stringify(results));
+
+      // 跳轉到結果頁面
+      router.push("/student/results");
+    } catch (error) {
+      console.error("Failed to submit answers", error);
+      alert("提交失敗，請稍後再試。");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  if (loading) {
+    return (
+      <main className={styles.page}>
+        <section className={styles.card}>
+          <p>載入題目中...</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <main className={styles.page}>
+        <section className={styles.card}>
+          <div className={styles.navRow}>
+            <Link href="/" className={styles.link}>
+              返回主頁 / 聊天室
+            </Link>
+          </div>
+          <p className={styles.errorNotice} role="alert">
+            {loadError}
+          </p>
+        </section>
+      </main>
+    );
+  }
+
+  if (questions.length === 0) {
+    return (
+      <main className={styles.page}>
+        <section className={styles.card}>
+          <div className={styles.navRow}>
+            <Link href="/" className={styles.link}>
+              返回主頁 / 聊天室
+            </Link>
+          </div>
+          <h1 className={styles.title}>學生作答介面</h1>
+          <p>目前沒有題目可作答。</p>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className={styles.page}>
@@ -60,84 +192,77 @@ export default function StudentPage() {
           <Link href="/" className={styles.link}>
             返回主頁 / 聊天室
           </Link>
-          <Link href="/teacher" className={styles.link}>
-            返回老師題目頁
-          </Link>
         </div>
-        <p className={styles.badge}>Prototype / Mock Only（非正式評分）</p>
-        <h1 className={styles.title}>學生端作答頁面原型</h1>
-        <p className={styles.description}>
-          本頁僅示範前端互動流程，不會送出到後端評分系統。
-        </p>
-        {loadError ? (
-          <p className={styles.errorNotice} role="alert">
-            {loadError}
-          </p>
-        ) : null}
 
-        {!mockQuestion ? (
-          <section className={styles.emptyState} aria-live="polite">
-            <h2 className={styles.emptyTitle}>目前沒有可作答的 mock 題目</h2>
-            <p className={styles.emptyText}>
-              請先到老師端建立並暫存題目，學生端才會顯示作答內容。
-            </p>
-            <div className={styles.links}>
-              <Link href="/teacher">前往老師頁建立題目</Link>
-              <Link href="/">返回主頁</Link>
-            </div>
-          </section>
-        ) : (
-          <>
-            <form className={styles.form} onSubmit={handleSubmit}>
-              <fieldset className={styles.block}>
-                <legend className={styles.blockTitle}>{mockQuestion.title}</legend>
-                <div className={styles.options}>
-                  {mockQuestion.options.map((option) => (
-                    <label key={option} className={styles.optionLabel}>
+        <h1 className={styles.title}>學生作答介面</h1>
+        <p className={styles.description}>
+          請完成所有題目的作答，全部作答完畢後才能提交。
+        </p>
+
+        <div className={styles.progress}>
+          <p className={styles.progressText}>
+            進度：{Object.values(answers).filter(a => a.selectedOption?.trim()).length} / {questions.length} 題
+          </p>
+        </div>
+
+        <div className={styles.questionsContainer}>
+          {questions.map((question, index) => (
+            <div key={question.id} className={styles.questionBlock}>
+              <h2 className={styles.questionTitle}>
+                題目 {question.question_number}：{question.prompt}
+              </h2>
+
+              <div className={styles.options}>
+                {["A", "B", "C", "D"].map((choice) => {
+                  const optionText = question.options?.[choice];
+                  if (!optionText) return null;
+
+                  return (
+                    <label key={choice} className={styles.optionLabel}>
                       <input
                         type="radio"
-                        name={mockQuestion.id}
-                        value={option}
-                        checked={selectedOption === option}
-                        onChange={(event) => setSelectedOption(event.target.value)}
+                        name={`question-${question.id}`}
+                        value={choice}
+                        checked={answers[question.id]?.selectedOption === choice}
+                        onChange={(e) => updateAnswer(question.id, "selectedOption", e.target.value)}
                       />
-                      <span>{option}</span>
+                      <span>{choice}. {optionText}</span>
                     </label>
-                  ))}
-                </div>
-              </fieldset>
-
-              <div className={styles.block}>
-                <label className={styles.blockTitle} htmlFor="short-answer">
-                  {mockQuestion.shortAnswerPrompt}
-                </label>
-                <textarea
-                  id="short-answer"
-                  className={styles.textarea}
-                  placeholder="請輸入你的簡答..."
-                  value={shortAnswer}
-                  onChange={(event) => setShortAnswer(event.target.value)}
-                  rows={5}
-                />
+                  );
+                })}
               </div>
 
-              <button type="submit" className={styles.submitButton}>
-                提交作答
-              </button>
-            </form>
+              <div className={styles.shortAnswerBlock}>
+                <label className={styles.shortAnswerLabel} htmlFor={`short-answer-${question.id}`}>
+                  簡答題（可選）：
+                </label>
+                <textarea
+                  id={`short-answer-${question.id}`}
+                  className={styles.shortAnswerTextarea}
+                  placeholder="請輸入您的簡答..."
+                  value={answers[question.id]?.shortAnswer || ""}
+                  onChange={(e) => updateAnswer(question.id, "shortAnswer", e.target.value)}
+                  rows={3}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
 
-            {submitted && (
-              <section className={styles.summary} aria-live="polite">
-                <h2 className={styles.summaryTitle}>本地提交摘要（Mock）</h2>
-                <p className={styles.summaryLine}>單選題：{optionStatus}</p>
-                <p className={styles.summaryLine}>簡答內容：{shortAnswerStatus}</p>
-              </section>
-            )}
-          </>
-        )}
-
-        <div className={styles.links}>
-          <Link href="/">返回主頁 / 聊天室入口</Link>
+        <div className={styles.submitSection}>
+          <button
+            type="button"
+            className={`${styles.submitButton} ${!isAllQuestionsAnswered() ? styles.submitButtonDisabled : ""}`}
+            onClick={handleSubmit}
+            disabled={!isAllQuestionsAnswered()}
+          >
+            提交所有答案
+          </button>
+          {!isAllQuestionsAnswered() && (
+            <p className={styles.submitWarning}>
+              請完成所有必答題目（單選題）再提交
+            </p>
+          )}
         </div>
       </section>
     </main>

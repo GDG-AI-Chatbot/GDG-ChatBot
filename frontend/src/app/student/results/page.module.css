@@ -1,0 +1,285 @@
+.page {
+  min-height: 100vh;
+  padding: 28px;
+  background: linear-gradient(180deg, #f4f8ff 0%, #eef5ff 100%);
+}
+
+.card {
+  max-width: 900px;
+  margin: 0 auto;
+  background: #ffffff;
+  border: 1px solid #d7e4f9;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 6px 20px rgba(17, 49, 98, 0.08);
+}
+
+.navRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 10px;
+}
+
+.link {
+  color: #1a57b4;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.title {
+  margin: 0 0 24px;
+  color: #142f5c;
+  font-size: 28px;
+  text-align: center;
+}
+
+.scoreCard {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 16px;
+  padding: 24px;
+  margin-bottom: 32px;
+  text-align: center;
+  color: white;
+}
+
+.scoreTitle {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.scoreDisplay {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.scoreNumber {
+  font-size: 48px;
+  font-weight: bold;
+  margin-right: 8px;
+}
+
+.scoreUnit {
+  font-size: 24px;
+  opacity: 0.9;
+}
+
+.scoreDetail {
+  margin: 0;
+  font-size: 16px;
+  opacity: 0.9;
+}
+
+.resultsList {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.resultItem {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 20px;
+  background: #f9fafb;
+}
+
+.questionTitle {
+  margin: 0 0 16px;
+  color: #0f2448;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.option {
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  position: relative;
+}
+
+.correctOption {
+  background: #d1fae5;
+  border-color: #10b981;
+  font-weight: 600;
+}
+
+.wrongOption {
+  background: #fee2e2;
+  border-color: #ef4444;
+  font-weight: 600;
+}
+
+.correctMark {
+  color: #10b981;
+  font-weight: bold;
+  margin-left: 8px;
+}
+
+.wrongMark {
+  color: #ef4444;
+  font-weight: bold;
+  margin-left: 8px;
+}
+
+.answerStatus {
+  margin-bottom: 16px;
+}
+
+.correctText {
+  color: #059669;
+  font-weight: bold;
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.wrongText {
+  color: #dc2626;
+  font-weight: bold;
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+
+.selectedAnswer {
+  margin: 4px 0;
+  color: #374151;
+  font-size: 14px;
+}
+
+.correctAnswer {
+  margin: 4px 0;
+  color: #059669;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.shortAnswer {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 12px;
+}
+
+.shortAnswer h4 {
+  margin: 0 0 8px;
+  color: #0f2448;
+  font-size: 16px;
+}
+
+.shortAnswer p {
+  margin: 0;
+  color: #374151;
+  line-height: 1.5;
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.actions {
+  margin-top: 32px;
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+}
+
+.primaryButton {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #3b82f6;
+  color: white;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+  transition: background-color 0.2s;
+}
+
+.primaryButton:hover {
+  background: #2563eb;
+}
+
+.secondaryButton {
+  display: inline-block;
+  padding: 12px 24px;
+  background: #f3f4f6;
+  color: #374151;
+  text-decoration: none;
+  border-radius: 8px;
+  font-weight: 600;
+  text-align: center;
+  border: 1px solid #d1d5db;
+  transition: background-color 0.2s;
+}
+
+.secondaryButton:hover {
+  background: #e5e7eb;
+}
+
+.analysisCard {
+  margin-top: 32px;
+  padding: 20px;
+  border-radius: 14px;
+  background: #eef2ff;
+  border: 1px solid #c7d2fe;
+}
+
+.analysisTitle {
+  margin: 0 0 12px;
+  color: #1d4ed8;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.analysisText {
+  margin: 0;
+  color: #334155;
+  line-height: 1.8;
+  white-space: pre-wrap;
+}
+
+.analysisLoading,
+.analysisError {
+  margin: 0;
+  font-size: 15px;
+  color: #475569;
+}
+
+.analysisError {
+  color: #b91c1c;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 16px;
+  }
+
+  .card {
+    padding: 16px;
+  }
+
+  .scoreDisplay {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .scoreNumber {
+    font-size: 36px;
+  }
+
+  .actions {
+    flex-direction: column;
+  }
+}

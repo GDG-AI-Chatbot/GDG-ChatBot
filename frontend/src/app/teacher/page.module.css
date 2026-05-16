@@ -99,16 +99,132 @@
   font-size: 14px;
 }
 
-.successNotice {
-  color: #0f5d38;
-  background: #e8f8ef;
-  border: 1px solid #b8e8cb;
+.buttonRow {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
 }
 
-.errorNotice {
-  color: #862c2c;
-  background: #fdeeee;
-  border: 1px solid #f4c8c8;
+.cancelButton {
+  padding: 10px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #f9fafb;
+  color: #374151;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cancelButton:hover {
+  background: #f3f4f6;
+}
+
+.questionsSection {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.sectionTitle {
+  margin: 0 0 16px;
+  color: #0f2448;
+  font-size: 20px;
+}
+
+.emptyMessage {
+  color: #6b7280;
+  font-style: italic;
+}
+
+.questionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.questionItem {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 16px;
+  background: #f9fafb;
+}
+
+.questionContent {
+  margin-bottom: 12px;
+}
+
+.questionTitle {
+  margin: 0 0 12px;
+  color: #0f2448;
+  font-size: 16px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.option {
+  padding: 4px 8px;
+  background: #ffffff;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #0f2448;
+}
+
+.correctOption {
+  background: #d1fae5;
+  border: 1px solid #10b981;
+  font-weight: 600;
+  color: #0f2448;
+}
+
+.shortAnswer {
+  margin: 8px 0;
+  color: #059669;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.createdAt {
+  margin: 8px 0 0;
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.questionActions {
+  display: flex;
+  gap: 8px;
+}
+
+.editButton {
+  padding: 6px 12px;
+  border: 1px solid #3b82f6;
+  border-radius: 4px;
+  background: #3b82f6;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.editButton:hover {
+  background: #2563eb;
+}
+
+.deleteButton {
+  padding: 6px 12px;
+  border: 1px solid #dc2626;
+  border-radius: 4px;
+  background: #dc2626;
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.deleteButton:hover {
+  background: #b91c1c;
 }
 
 .linkRow {

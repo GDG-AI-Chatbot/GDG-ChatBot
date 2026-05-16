@@ -26,6 +26,8 @@ export default function Page() {
   const [registerRole, setRegisterRole] = useState("");
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
   const [token, setToken] = useState("");
+  const [userRole, setUserRole] = useState("");
+  const [userId, setUserId] = useState(null);
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState("");
   const roleMenuRef = useRef(null);
@@ -104,14 +106,22 @@ export default function Page() {
   // ---------- lifecycle ----------
   useEffect(() => {
     const t = localStorage.getItem("token");
+    const role = localStorage.getItem("role");
+    const id = localStorage.getItem("userId");
     if (t) {
       setToken(t);
+      setUserRole(role || "");
+      setUserId(id ? Number(id) : null);
       // 登入狀態下：載入聊天室列表 + 預設選一個
       ensureAtLeastOneConversation(t).catch((e) => {
         // token 失效就登出
         console.error(e);
         localStorage.removeItem("token");
+        localStorage.removeItem("role");
+        localStorage.removeItem("userId");
         setToken("");
+        setUserRole("");
+        setUserId(null);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,7 +168,11 @@ export default function Page() {
     try {
       const data = await apiJson("/auth/login", "POST", { username: user, password: pw }, "");
       localStorage.setItem("token", data.access_token);
+      localStorage.setItem("role", data.role);
+      localStorage.setItem("userId", String(data.user_id));
       setToken(data.access_token);
+      setUserRole(data.role);
+      setUserId(data.user_id);
 
       // 登入後：載入聊天室列表/預設聊天室
       await ensureAtLeastOneConversation(data.access_token);
@@ -181,7 +195,11 @@ export default function Page() {
 
   function logout() {
     localStorage.removeItem("token");
+    localStorage.removeItem("role");
+    localStorage.removeItem("userId");
     setToken("");
+    setUserRole("");
+    setUserId(null);
     setConversations([]);
     setActiveConversationId(null);
     setMessages([]);
@@ -812,17 +830,28 @@ export default function Page() {
                 </h3>
               </div>
               <div className={styles.entryActions}>
-                <Link href="/teacher" className={styles.entryActionButton}>
-                  老師：上傳題目與解答
-                </Link>
-                <Link href="/student" className={styles.entryActionButton}>
-                  學生：開始作答
-                </Link>
+                {userRole === "teacher" && (
+                  <Link href="/teacher" className={styles.entryActionButton}>
+                    上傳題目與解答
+                  </Link>
+                )}
+                {userRole === "student" && (
+                  <Link href="/student" className={styles.entryActionButton}>
+                    開始作答
+                  </Link>
+                )}
+                {!token && (
+                  <p className={styles.authNotice}>
+                    請登入後選擇對應角色進入老師或學生專區。
+                  </p>
+                )}
+                {token && !userRole && (
+                  <p className={styles.authNotice}>
+                    登入後才能進入角色專屬頁面。
+                  </p>
+                )}
               </div>
             </div>
-            <p className={styles.prototypeHint}>
-              Prototype 導覽：老師/學生頁為前端示範流程，尚未串接正式後端評分與上傳 API。
-            </p>
             <span className={styles.chatTopMeta}>
               {activeConversation
                 ? `Conversation #${activeConversation.id}`
