@@ -8,7 +8,9 @@ venv/
 !.env.example
 
 # backend local data
-backend/app.db
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
 backend/uploads/
 
 # node
