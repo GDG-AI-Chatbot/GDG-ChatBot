@@ -77,6 +77,12 @@ def init_db():
     )
     """)
 
+    # 確保 conversations 資料表有儲存 Dify ID 的欄位
+    try:
+        cur.execute("ALTER TABLE conversations ADD COLUMN dify_conversation_id TEXT")
+    except sqlite3.OperationalError:
+        pass  # 欄位已存在，跳過
+
     cur.execute("""
     CREATE TABLE IF NOT EXISTS messages(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -620,7 +626,7 @@ def analyze_student_knowledge(student_id: int, user: dict = Depends(require_stud
     prompt_lines.append("1. 學生的主要知識盲區或觀念不足點。")
     prompt_lines.append("2. 他的錯誤模式，例如常在哪種題型或哪類概念出錯。")
     prompt_lines.append("3. 最適合他的後續學習建議。")
-    prompt_lines.append("請用中文簡單精準回答，並條列出重點。")
+    prompt_lines.append("請用中文簡單回答，並條列出重點。")
 
     prompt = "\n".join(prompt_lines)
 
@@ -629,9 +635,8 @@ def analyze_student_knowledge(student_id: int, user: dict = Depends(require_stud
         conversation_id=0,
         user_id=student_id,
         files=None,
+        mode="analyze"
     )
-
-    print(analysis)  # 先印出來看看
 
     return {"analysis": analysis}
 
@@ -765,18 +770,21 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
     if not user_text:
         raise HTTPException(status_code=400, detail="Empty message")
 
-    # ===== 第一段：只做 DB 寫入（快速完成後關掉連線）=====
+    # ===== 第一段：只做 DB 寫入與查詢 Dify ID =====
     conn = db()
     cur = conn.cursor()
 
+    # 查詢該聊天室是否存在，順便撈出 dify_conversation_id
     cur.execute(
-        "SELECT id FROM conversations WHERE id=? AND user_id=?",
+        "SELECT id, dify_conversation_id FROM conversations WHERE id=? AND user_id=?",
         (conversation_id, user_id)
     )
-    if not cur.fetchone():
+    convo_row = cur.fetchone()
+    if not convo_row:
         conn.close()
         raise HTTPException(status_code=404, detail="Conversation not found")
-
+    
+    dify_conv_id = convo_row["dify_conversation_id"]
     now = datetime.utcnow().isoformat()
 
     cur.execute(
@@ -813,11 +821,13 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
     conn.close()  # 先關掉，避免鎖住 DB
 
     # ===== 第二段：呼叫 provider（可能耗時）=====
-    reply = provider.reply(
+
+    reply, new_dify_id = provider.reply(
         user_text=user_text,
-        conversation_id=conversation_id,
+        conversation_id=dify_conv_id, 
         user_id=user_id,
         files=files_for_provider,
+        mode="chat"
     )
 
     # ===== 第三段：再開新連線寫入 assistant message =====
@@ -830,6 +840,11 @@ def chat(data: ChatIn, user_id: int = Depends(require_user_id)):
         """,
         (conversation_id, user_id, "assistant", reply, datetime.utcnow().isoformat())
     )
+    if new_dify_id and not dify_conv_id:
+        cur.execute(
+            "UPDATE conversations SET dify_conversation_id = ? WHERE id = ?",
+            (new_dify_id, conversation_id)
+        )
     conn.commit()
     conn.close()
 

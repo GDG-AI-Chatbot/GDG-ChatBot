@@ -1,7 +1,7 @@
 from .base import ChatProvider
 
 class MockProvider(ChatProvider):
-    def reply(self, user_text: str, conversation_id: int, user_id: int, files=None) -> str:
+    def reply(self, user_text: str, conversation_id: int, user_id: int, files=None, mode=None) -> str:
         file_note = ""
         if files:
             names = [f.get("filename", str(f.get("file_id"))) for f in files]

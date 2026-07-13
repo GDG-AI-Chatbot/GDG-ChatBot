@@ -8,6 +8,7 @@ class DigiRunnerProvider:
         self.base_url = os.getenv("DIGIRUNNER_BASE_URL", "http://localhost:31080").rstrip("/")
         self.token_path = os.getenv("DIGIRUNNER_TOKEN_PATH", "/oauth/token")
         self.chat_path = os.getenv("DIGIRUNNER_CHAT_PATH", "/dify/chat")
+        self.analyze_path = os.getenv("DIGIRUNNER_ANALYZE_PATH", "/dify/analyze")
 
         self.client_id = os.getenv("DIGIRUNNER_CLIENT_ID", "")
         self.client_secret = os.getenv("DIGIRUNNER_CLIENT_SECRET", "")
@@ -51,13 +52,18 @@ class DigiRunnerProvider:
         self._token_expire_at = time.time() + expires_in
         return token
 
-    def reply(self, user_text: str, conversation_id: int, user_id: int, files=None) -> str:
+    def reply(self, user_text: str, user_id: int, conversation_id=None, files=None, mode: str = "chat") -> tuple:
         token = self._get_access_token()
 
-        url = f"{self.base_url}{self.chat_path}"
+        if mode == "analyze":
+            url = f"{self.base_url}{self.analyze_path}"
+        else:
+            url = f"{self.base_url}{self.chat_path}"
+
         payload = {
             "inputs": {},
             "query": user_text,
+            "conversation_id": conversation_id,
             "response_mode": "blocking",
             "user": str(user_id),
         }
@@ -77,6 +83,7 @@ class DigiRunnerProvider:
             raise RuntimeError(f"Chat failed: {resp.status_code} {resp.text}")
 
         data = resp.json()
+        reply = data.get("answer", "")
+        dify_conversation_id = data.get("conversation_id", "")
 
-        # 依你貼的 response，回答在 answer
-        return data.get("answer", "")
+        return reply, dify_conversation_id
